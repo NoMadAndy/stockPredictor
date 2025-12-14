@@ -252,10 +252,11 @@ def get_quote_and_news(symbol: str, logger=None):
         )
 
         # externe News ergänzen
+        # Use info we already fetched, or fallback to symbol itself (avoid redundant API call)
         symbol_name = (
             info.get("shortName")
             or info.get("longName")
-            or get_symbol_name(symbol, logger=logger)
+            or symbol
         )
         extra_news = get_additional_news(symbol, symbol_name, logger=logger)
 

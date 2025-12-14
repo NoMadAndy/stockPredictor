@@ -17,25 +17,19 @@ def suppress_yfinance_output():
     """
     old_stdout = sys.stdout
     old_stderr = sys.stderr
-    devnull_stdout = None
-    devnull_stderr = None
+    devnull = None
     try:
-        devnull_stdout = open(os.devnull, 'w')
-        devnull_stderr = open(os.devnull, 'w')
-        sys.stdout = devnull_stdout
-        sys.stderr = devnull_stderr
+        # Open devnull once and use for both stdout and stderr
+        devnull = open(os.devnull, 'w')
+        sys.stdout = devnull
+        sys.stderr = devnull
         yield
     finally:
         sys.stdout = old_stdout
         sys.stderr = old_stderr
-        # Clean up file handles safely
-        if devnull_stdout is not None:
+        # Clean up file handle safely
+        if devnull is not None:
             try:
-                devnull_stdout.close()
-            except Exception:
-                pass  # Ignore errors during cleanup
-        if devnull_stderr is not None:
-            try:
-                devnull_stderr.close()
+                devnull.close()
             except Exception:
                 pass  # Ignore errors during cleanup
