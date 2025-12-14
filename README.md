@@ -37,6 +37,9 @@ pip install -r requirements.txt
 
 # Server starten
 python app.py
+
+# Verify imports (optional)
+python -c "import app; import news_service; import utils; print('✓ All imports successful')"
 ```
 
 ### Docker Installation
@@ -50,6 +53,9 @@ docker-compose up -d
 
 # Logs anzeigen
 docker-compose logs -f
+
+# Verify installation (optional)
+docker-compose exec app python -c "import app; import news_service; import utils; print('✓ All imports successful')"
 ```
 
 ## Konfiguration
