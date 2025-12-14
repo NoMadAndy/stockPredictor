@@ -1,5 +1,7 @@
 # news_service.py
 import os
+import sys
+from contextlib import contextmanager
 from datetime import datetime
 
 import yfinance as yf
@@ -14,6 +16,30 @@ import requests
 def _log(logger, msg: str):
     if logger:
         logger(msg)
+
+
+# ---------------------------------------------------------
+# Context Manager to Suppress yfinance Error Messages
+# ---------------------------------------------------------
+
+
+@contextmanager
+def suppress_yfinance_output():
+    """
+    Context manager to suppress stdout/stderr from yfinance.
+    yfinance prints error messages directly to stderr/stdout which clutter the logs.
+    """
+    old_stdout = sys.stdout
+    old_stderr = sys.stderr
+    try:
+        sys.stdout = open(os.devnull, 'w')
+        sys.stderr = open(os.devnull, 'w')
+        yield
+    finally:
+        sys.stdout.close()
+        sys.stderr.close()
+        sys.stdout = old_stdout
+        sys.stderr = old_stderr
 
 
 # ---------------------------------------------------------
@@ -95,8 +121,10 @@ def get_symbol_name(symbol: str, logger=None) -> str:
     """Versucht, den vollen Namen der Aktie über yfinance zu holen."""
     import json
     try:
-        t = yf.Ticker(symbol)
-        info = t.info or {}
+        # Suppress yfinance error messages
+        with suppress_yfinance_output():
+            t = yf.Ticker(symbol)
+            info = t.info or {}
         name = info.get("shortName") or info.get("longName")
         if name:
             return str(name)
@@ -191,15 +219,29 @@ def get_quote_and_news(symbol: str, logger=None):
     news_items = []
 
     try:
-        t = yf.Ticker(symbol)
+        # Suppress yfinance error messages
+        with suppress_yfinance_output():
+            t = yf.Ticker(symbol)
 
-        # Quote
-        fast = getattr(t, "fast_info", None)
-        info = {}
-        try:
-            info = t.info or {}
-        except Exception:
+            # Quote
+            fast = getattr(t, "fast_info", None)
             info = {}
+            try:
+                info = t.info or {}
+            except Exception:
+                info = {}
+
+            # yfinance-News
+            raw_news = []
+            try:
+                raw_news = getattr(t, "news", None) or []
+            except Exception:
+                raw_news = []
+            if not raw_news:
+                try:
+                    raw_news = t.get_news() or []
+                except Exception:
+                    raw_news = []
 
         if fast is not None:
             last_price = getattr(fast, "last_price", None)
@@ -216,18 +258,6 @@ def get_quote_and_news(symbol: str, logger=None):
         quote["pe"] = info.get("trailingPE")
         quote["week52High"] = info.get("fiftyTwoWeekHigh")
         quote["week52Low"] = info.get("fiftyTwoWeekLow")
-
-        # yfinance-News
-        raw_news = []
-        try:
-            raw_news = getattr(t, "news", None) or []
-        except Exception:
-            raw_news = []
-        if not raw_news:
-            try:
-                raw_news = t.get_news() or []
-            except Exception:
-                raw_news = []
 
         for item in raw_news[:5]:
             news_items.append(

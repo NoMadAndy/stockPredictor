@@ -1,4 +1,6 @@
 import os
+import sys
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 
 from flask import Flask, render_template, request, jsonify
@@ -17,6 +19,28 @@ from news_service import get_symbol_name, get_quote_and_news  # <--- NEU
 class TickerDataError(Exception):
     """Raised when ticker data cannot be fetched (invalid, delisted, etc.)"""
     pass
+
+
+# -------------------------------------------------------------------
+# Context Manager to Suppress yfinance Error Messages
+# -------------------------------------------------------------------
+@contextmanager
+def suppress_yfinance_output():
+    """
+    Context manager to suppress stdout/stderr from yfinance.
+    yfinance prints error messages directly to stderr/stdout which clutter the logs.
+    """
+    old_stdout = sys.stdout
+    old_stderr = sys.stderr
+    try:
+        sys.stdout = open(os.devnull, 'w')
+        sys.stderr = open(os.devnull, 'w')
+        yield
+    finally:
+        sys.stdout.close()
+        sys.stderr.close()
+        sys.stdout = old_stdout
+        sys.stderr = old_stderr
 
 
 # -------------------------------------------------------------------
@@ -66,7 +90,9 @@ def download_data(symbol: str, start: str, end: str) -> pd.DataFrame:
 
     log(f"Lade Kursdaten für {symbol} {start} → {end} ...")
 
-    df = yf.download(symbol, start=start, end=end, progress=False)
+    # Suppress yfinance error messages that would clutter the logs
+    with suppress_yfinance_output():
+        df = yf.download(symbol, start=start, end=end, progress=False)
 
     if df is None or df.empty:
         raise TickerDataError(
