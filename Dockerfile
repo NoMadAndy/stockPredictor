@@ -23,8 +23,8 @@ COPY diagnose_yfinance.py .
 COPY templates/ templates/
 COPY static/ static/
 
-# Create directory for optional news API key
-RUN mkdir -p /app/config
+# Create directories for optional news API key and provider keys
+RUN mkdir -p /app/config && chmod 755 /app/config
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
