@@ -1,11 +1,11 @@
 # news_service.py
 import os
-import sys
-from contextlib import contextmanager
 from datetime import datetime
 
 import yfinance as yf
 import requests
+
+from utils import suppress_yfinance_output
 
 
 # ---------------------------------------------------------
@@ -16,30 +16,6 @@ import requests
 def _log(logger, msg: str):
     if logger:
         logger(msg)
-
-
-# ---------------------------------------------------------
-# Context Manager to Suppress yfinance Error Messages
-# ---------------------------------------------------------
-
-
-@contextmanager
-def suppress_yfinance_output():
-    """
-    Context manager to suppress stdout/stderr from yfinance.
-    yfinance prints error messages directly to stderr/stdout which clutter the logs.
-    """
-    old_stdout = sys.stdout
-    old_stderr = sys.stderr
-    try:
-        sys.stdout = open(os.devnull, 'w')
-        sys.stderr = open(os.devnull, 'w')
-        yield
-    finally:
-        sys.stdout.close()
-        sys.stderr.close()
-        sys.stdout = old_stdout
-        sys.stderr = old_stderr
 
 
 # ---------------------------------------------------------
