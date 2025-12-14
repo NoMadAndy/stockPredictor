@@ -4,9 +4,16 @@ Ein Web-basiertes Tool zur Aktienanalyse und -vorhersage mit Machine Learning.
 
 ## Funktionen
 
-- **Kursdaten-Analyse**: Lädt historische Aktienkurse über yfinance
-- **Technische Indikatoren**: Berechnet SMA, EMA, RSI, MACD und Bollinger Bands
-- **ML-Vorhersage**: Nutzt Random Forest Regression für Kursprognosen
+- **Multi-Provider-Unterstützung**: Wählen Sie zwischen Yahoo Finance, Alpha Vantage, Finnhub und Tiingo
+- **Intraday-Analyse**: Vorhersagen auf 1-Minuten- bis Stunden-Intervallen mit erweiterten Features
+- **Technische Indikatoren**: 
+  - Täglich: SMA, EMA, RSI, MACD, Bollinger Bands
+  - Intraday: ATR, VWAP, Volatilität, Momentum, zeitbasierte Features
+- **ML-Vorhersage**: 
+  - Täglich: Random Forest Regression
+  - Intraday: Histogram Gradient Boosting mit TimeSeriesSplit-Validierung
+- **Sichere API-Key-Verwaltung**: Verschlüsselte Speicherung mit Fernet (cryptography)
+- **Caching**: In-Memory-Cache mit TTL für Intraday-Daten (reduziert API-Aufrufe)
 - **Unterstützungs-/Widerstandsniveaus**: Identifiziert wichtige Preisniveaus
 - **Trendlinie**: Berechnet lineare Trends für historische und prognostizierte Daten
 - **News-Integration**: Zeigt aktuelle Nachrichten zur Aktie (yfinance + NewsAPI)
@@ -79,34 +86,84 @@ export NEWSAPI_KEY="ihr-api-key"
 export NEWSAPI_KEY_FILE="/pfad/zur/key-datei.txt"
 ```
 
+### Marktdaten-Provider und API-Schlüssel
+
+Die Anwendung unterstützt mehrere Datenanbieter:
+
+#### Yahoo Finance (Standard, kostenlos)
+- Keine Registrierung erforderlich
+- Unterstützt täglich und Intraday (begrenzt auf ~60 Tage History)
+- Auswahl in der UI: "Yahoo Finance"
+
+#### Alpha Vantage
+1. Kostenlosen API-Key unter https://www.alphavantage.co/support/#api-key holen
+2. In der Web-UI unter "API-Schlüssel" eingeben
+3. Rate Limits: 5 Aufrufe/Minute, 100 Aufrufe/Tag (kostenlose Stufe)
+4. Intraday-Daten auf ~30 Tage begrenzt
+
+#### Finnhub
+1. Kostenlosen API-Key unter https://finnhub.io/register holen
+2. In der Web-UI unter "API-Schlüssel" eingeben
+3. Rate Limits: 60 Aufrufe/Minute (kostenlose Stufe)
+4. Intraday-Daten erfordern Premium-Abonnement
+
+#### Tiingo
+1. Kostenlosen API-Key unter https://www.tiingo.com/account/api/token holen
+2. In der Web-UI unter "API-Schlüssel" eingeben
+3. Unterstützt US-Aktien für Intraday (IEX)
+4. Gute kostenlose Stufe mit angemessenen Limits
+
+**API-Key-Speicherung**: API-Schlüssel werden verschlüsselt auf dem Server gespeichert (Fernet-Verschlüsselung) und bleiben nach Neuladen der Seite erhalten.
+
 ### Secret Key (Erforderlich für Produktion!)
 
 **WICHTIG**: Für Produktionsumgebungen **muss** ein sicherer Secret Key gesetzt werden!
 
 ```bash
-# Secret Key generieren
-SECRET_KEY=$(openssl rand -hex 32)
+# Secret Key für verschlüsselte API-Key-Speicherung generieren
+API_KEY_ENCRYPTION_SECRET=$(openssl rand -hex 32)
+export API_KEY_ENCRYPTION_SECRET="$API_KEY_ENCRYPTION_SECRET"
 
-# Als Umgebungsvariable setzen
+# Flask Secret Key (getrennt vom Encryption Secret)
+SECRET_KEY=$(openssl rand -hex 32)
 export SECRET_KEY="$SECRET_KEY"
 
 # Oder in docker-compose.yml eintragen
 # Oder in der systemd Service-Datei konfigurieren
 ```
 
-⚠️ **Sicherheitshinweis**: Die Standard-Secrets in den Service-Dateien sind **nicht sicher** und müssen vor dem Deployment geändert werden! Siehe INSTALLATION.md für Details.
+⚠️ **Sicherheitshinweis**: 
+- Die Standard-Secrets sind **nicht sicher** und müssen vor dem Deployment geändert werden!
+- `API_KEY_ENCRYPTION_SECRET` wird für die Verschlüsselung der Provider-API-Schlüssel verwendet
+- `SECRET_KEY` wird für Flask-Sessions und als Fallback für die Verschlüsselung verwendet
+- Siehe INSTALLATION.md für Details.
 
 ## Verwendung
 
 1. Öffnen Sie `http://localhost:8001` im Browser
-2. Geben Sie ein Aktiensymbol ein (z.B. "DAC", "AAPL")
-3. Wählen Sie den Zeitraum für die Analyse
-4. Passen Sie die Parameter an:
-   - **Vorhersageschritte**: Anzahl der Tage in die Zukunft
+2. Wählen Sie einen **Datenanbieter** aus (Yahoo Finance ist Standard)
+3. Falls erforderlich, geben Sie Ihren **API-Schlüssel** ein (wird automatisch gespeichert)
+4. Geben Sie ein **Aktiensymbol** ein (z.B. "AAPL", "MSFT", "GOOGL")
+5. Wählen Sie das **Intervall**:
+   - **Täglich (1d)**: Für längerfristige Analysen (Jahre)
+   - **Intraday (60m, 30m, 15m, 5m, 1m)**: Für kurzfristige Analysen (Tage bis Wochen)
+6. Bei Intraday: Setzen Sie **Lookback-Tage** (wie viele Tage zurück geladen werden sollen)
+7. Wählen Sie den Zeitraum (für tägliche Daten)
+8. Passen Sie weitere Parameter an:
+   - **Vorhersageschritte**: Anzahl der Perioden in die Zukunft
    - **Schwellenwert**: Prozentsatz für Handelssignale
-   - **Segmentlänge**: Anzahl der Tage für Support/Resistance
-   - **Horizont**: Tage für Signalberechnung
-5. Klicken Sie auf "Analyse starten"
+   - **Segmentlänge**: Anzahl der Kerzen für Support/Resistance
+   - **Horizont**: Perioden für Signalberechnung
+9. Klicken Sie auf "Trainieren & Vorhersagen"
+
+### Intraday-Modus Hinweise
+
+- **Yahoo Finance**: Intraday-Daten auf ~60 Tage beschränkt
+- **Alpha Vantage**: Intraday-Daten auf ~30 Tage beschränkt, Rate Limits beachten
+- **Finnhub**: Premium-Abonnement für Intraday erforderlich
+- **Tiingo**: Funktioniert gut für US-Aktien (IEX-Daten)
+- **Caching**: Intraday-Daten werden 60 Sekunden gecacht, um API-Limits zu schonen
+- **Empfehlung**: Für Intraday 7-30 Tage Lookback verwenden
 
 ## API-Endpoints
 

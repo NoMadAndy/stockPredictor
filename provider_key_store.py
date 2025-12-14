@@ -15,14 +15,22 @@ from cryptography.fernet import Fernet, InvalidToken
 class ProviderKeyStore:
     """Encrypted storage for provider API keys."""
     
-    def __init__(self, secret_key: str, storage_path: str = "/app/config/provider_keys.json"):
+    def __init__(self, secret_key: str, storage_path: str = None):
         """
         Initialize key store with encryption.
         
         Args:
             secret_key: Secret key for encryption (from Flask SECRET_KEY or env var)
-            storage_path: Path to store encrypted keys
+            storage_path: Path to store encrypted keys (defaults to config/provider_keys.json)
         """
+        # Default to local config directory if not specified
+        if storage_path is None:
+            # Try /app/config for Docker, fall back to ./config for dev
+            if os.path.exists("/app"):
+                storage_path = "/app/config/provider_keys.json"
+            else:
+                storage_path = os.path.join(os.getcwd(), "config", "provider_keys.json")
+        
         self.storage_path = storage_path
         
         # Derive a Fernet key from the secret_key
