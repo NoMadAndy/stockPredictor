@@ -9,6 +9,8 @@ import yfinance as yf
 from datetime import datetime
 
 from .base import MarketDataProvider
+# Import utils from parent package - this is intentional coupling
+# as the suppress_yfinance_output utility is shared across the app
 from utils import suppress_yfinance_output
 
 

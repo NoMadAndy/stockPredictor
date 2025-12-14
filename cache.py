@@ -13,10 +13,11 @@ class CacheEntry:
     
     def __init__(self, value: Any, ttl_seconds: int):
         self.value = value
-        self.expires_at = datetime.now() + timedelta(seconds=ttl_seconds)
+        # Use UTC for consistent timezone-independent behavior
+        self.expires_at = datetime.utcnow() + timedelta(seconds=ttl_seconds)
     
     def is_expired(self) -> bool:
-        return datetime.now() > self.expires_at
+        return datetime.utcnow() > self.expires_at
 
 
 class SimpleCache:

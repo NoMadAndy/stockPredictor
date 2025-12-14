@@ -80,7 +80,7 @@ und dieses Projekt hält sich an [Semantic Versioning](https://semver.org/lang/d
 
 ### Abhängigkeiten
 - `cryptography==41.0.7` für Fernet-Verschlüsselung
-- `ta==0.11.0` für technische Analyse-Bibliothek
+- Technische Indikatoren manuell implementiert (kein externes TA-Library erforderlich)
 
 ### Dokumentation
 - README erweitert mit:
