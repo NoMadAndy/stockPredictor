@@ -7,19 +7,41 @@ und dieses Projekt hält sich an [Semantic Versioning](https://semver.org/lang/d
 
 ## [Unreleased]
 
+## [1.1.0] - 2024-12-14
+
 ### Hinzugefügt
-- Auto-Deployment-Konfiguration mit GitHub Webhooks
-- Docker und Docker Compose Support
-- Systemd Service-Datei für automatischen Start
-- Deployment-Skript für automatische Aktualisierung
-- Webhook-Receiver für GitHub-Integration
-- Umfassende README.md Dokumentation
-- requirements.txt für Dependency Management
-- .gitignore für Python-Projekte
+- **Auto-Deployment-Infrastruktur**:
+  - Docker und Docker Compose Support für containerisierte Deployment
+  - Dockerfile mit optimiertem Python 3.11 Image
+  - docker-compose.yml für einfache Orchestrierung
+  - Systemd Service-Dateien (stockpredictor.service, webhook-receiver.service)
+  - Deployment-Skript (deploy.sh) für automatische Aktualisierung
+  - GitHub Webhook-Receiver (webhook_receiver.py) für Push-Events
+  - Interaktiver Setup-Assistent (setup.sh)
+
+- **Dokumentation**:
+  - Umfassende README.md mit Nutzungsanleitung und API-Dokumentation
+  - Detaillierte INSTALLATION.md für verschiedene Deployment-Szenarien
+  - CHANGELOG.md nach Keep a Changelog Standard
+  - Sicherheitshinweise für Produktions-Deployment
+
+- **Konfiguration**:
+  - requirements.txt für vollständiges Dependency Management
+  - .gitignore für Python-Projekte
+  - Umgebungsvariablen-Support für flexible Konfiguration
+  - Sicherheitswarnungen für Default-Secrets
 
 ### Geändert
-- Port von 5000 auf 8001 geändert
-- Konfiguration für Produktionsumgebung optimiert
+- Port von 5000 auf 8001 geändert (mit Umgebungsvariablen-Unterstützung)
+- app.py für Produktionsumgebung optimiert
+- Konfiguration über PORT, SECRET_KEY und DEBUG Umgebungsvariablen
+- Debug-Modus standardmäßig deaktiviert in Produktion
+
+### Sicherheit
+- Klare Warnungen für unsichere Default-Secrets
+- Anleitung zur Secret-Generierung mit openssl
+- Root-User-Warnung für Webhook-Receiver mit Erklärung
+- Automatische Secret-Generierung in Installationsanleitung
 
 ## [1.0.0] - 2024-12-14
 
