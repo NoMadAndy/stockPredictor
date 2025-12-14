@@ -10,6 +10,15 @@ from sklearn.ensemble import RandomForestRegressor
 
 from news_service import get_symbol_name, get_quote_and_news  # <--- NEU
 
+
+# -------------------------------------------------------------------
+# Custom Exceptions
+# -------------------------------------------------------------------
+class TickerDataError(Exception):
+    """Raised when ticker data cannot be fetched (invalid, delisted, etc.)"""
+    pass
+
+
 # -------------------------------------------------------------------
 # Flask + Socket.IO Setup
 # -------------------------------------------------------------------
@@ -60,7 +69,12 @@ def download_data(symbol: str, start: str, end: str) -> pd.DataFrame:
     df = yf.download(symbol, start=start, end=end, progress=False)
 
     if df is None or df.empty:
-        raise ValueError("Keine Kursdaten für Symbol/Zeitraum gefunden.")
+        raise TickerDataError(
+            f"Keine Kursdaten für Symbol '{symbol}' gefunden. "
+            f"Mögliche Ursachen: Das Symbol ist ungültig, wurde delisted, "
+            f"oder es liegen keine Daten für den angegebenen Zeitraum vor. "
+            f"Bitte überprüfen Sie das Tickersymbol und versuchen Sie es erneut."
+        )
 
     if isinstance(df.columns, pd.MultiIndex):
         try:
@@ -293,7 +307,7 @@ def index():
     start_default = end_default - timedelta(days=365 * 2)
     return render_template(
         "index.html",
-        default_symbol="DAC",
+        default_symbol="AAPL",
         default_start=start_default.isoformat(),
         default_end=end_default.isoformat(),
     )
@@ -302,7 +316,7 @@ def index():
 @app.route("/api/train_predict", methods=["POST"])
 def api_train_predict():
     p = request.get_json()
-    symbol = (p.get("symbol") or "DAC").upper()
+    symbol = (p.get("symbol") or "AAPL").upper()
     start = p.get("start")
     end = p.get("end")
     steps = int(p.get("steps") or 10)
@@ -449,9 +463,21 @@ def api_train_predict():
             }
         )
 
+    except TickerDataError as e:
+        # Handle ticker-specific errors with helpful suggestions
+        error_msg = str(e)
+        log(f"Fehler: {error_msg}")
+        suggestion = (
+            f" Vorschläge: Versuchen Sie bekannte Symbole wie AAPL (Apple), "
+            f"MSFT (Microsoft), GOOGL (Google), TSLA (Tesla), oder AMZN (Amazon)."
+        )
+        return jsonify({"error": error_msg + suggestion}), 400
+    
     except Exception as e:
-        log(f"Fehler: {e}")
-        return jsonify({"error": str(e)}), 400
+        # Handle other unexpected errors
+        error_msg = str(e)
+        log(f"Fehler: {error_msg}")
+        return jsonify({"error": error_msg}), 400
 
 
 if __name__ == "__main__":

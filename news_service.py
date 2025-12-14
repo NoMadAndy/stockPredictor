@@ -93,14 +93,23 @@ def _load_news_api_key(logger=None) -> str | None:
 
 def get_symbol_name(symbol: str, logger=None) -> str:
     """Versucht, den vollen Namen der Aktie über yfinance zu holen."""
+    import json
     try:
         t = yf.Ticker(symbol)
         info = t.info or {}
         name = info.get("shortName") or info.get("longName")
         if name:
             return str(name)
+    except json.JSONDecodeError:
+        # JSON parsing error typically indicates invalid/delisted ticker
+        _log(logger, f"Symbol '{symbol}' konnte nicht abgerufen werden (möglicherweise ungültig oder delisted)")
     except Exception as e:
-        _log(logger, f"get_symbol_name Fehler: {e}")
+        # Log other errors but don't raise - just return the symbol as fallback
+        error_msg = str(e)
+        if "No timezone found" in error_msg or "delisted" in error_msg.lower():
+            _log(logger, f"Symbol '{symbol}' konnte nicht abgerufen werden (möglicherweise ungültig oder delisted)")
+        else:
+            _log(logger, f"get_symbol_name Fehler: {e}")
     return symbol
 
 
