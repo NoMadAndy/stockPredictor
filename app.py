@@ -9,6 +9,7 @@ import numpy as np
 from sklearn.ensemble import RandomForestRegressor
 
 from news_service import get_symbol_name, get_quote_and_news  # <--- NEU
+from utils import suppress_yfinance_output
 
 
 # -------------------------------------------------------------------
@@ -66,7 +67,9 @@ def download_data(symbol: str, start: str, end: str) -> pd.DataFrame:
 
     log(f"Lade Kursdaten für {symbol} {start} → {end} ...")
 
-    df = yf.download(symbol, start=start, end=end, progress=False)
+    # Suppress yfinance error messages that would clutter the logs
+    with suppress_yfinance_output():
+        df = yf.download(symbol, start=start, end=end, progress=False)
 
     if df is None or df.empty:
         raise TickerDataError(
