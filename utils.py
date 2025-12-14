@@ -10,8 +10,10 @@ from contextlib import contextmanager
 def suppress_yfinance_output():
     """
     Context manager to suppress stdout/stderr from yfinance.
+    
     yfinance prints error messages directly to stderr/stdout which clutter the logs.
-    This context manager temporarily redirects both to /dev/null.
+    This context manager temporarily redirects both streams to the null device
+    (os.devnull, which is cross-platform: /dev/null on Unix, NUL on Windows).
     """
     old_stdout = sys.stdout
     old_stderr = sys.stderr
@@ -26,7 +28,14 @@ def suppress_yfinance_output():
     finally:
         sys.stdout = old_stdout
         sys.stderr = old_stderr
+        # Clean up file handles safely
         if devnull_stdout is not None:
-            devnull_stdout.close()
+            try:
+                devnull_stdout.close()
+            except Exception:
+                pass  # Ignore errors during cleanup
         if devnull_stderr is not None:
-            devnull_stderr.close()
+            try:
+                devnull_stderr.close()
+            except Exception:
+                pass  # Ignore errors during cleanup
