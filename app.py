@@ -457,4 +457,4 @@ def api_train_predict():
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8001))
     debug = os.getenv("DEBUG", "False").lower() == "true"
-    socketio.run(app, host="0.0.0.0", port=port, debug=debug)
+    socketio.run(app, host="0.0.0.0", port=port, debug=debug, allow_unsafe_werkzeug=True)
