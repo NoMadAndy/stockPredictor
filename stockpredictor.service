@@ -1,0 +1,31 @@
+[Unit]
+Description=Stock Predictor Web Application
+After=network.target
+Documentation=https://github.com/NoMadAndy/stockPredictor
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/stockpredictor
+Environment="PATH=/opt/stockpredictor/venv/bin"
+Environment="PORT=8001"
+# SECURITY: Change this secret key before deployment!
+# Generate with: openssl rand -hex 32
+Environment="SECRET_KEY=PLEASE_CHANGE_THIS_SECRET_KEY_IN_PRODUCTION"
+Environment="DEBUG=false"
+ExecStart=/opt/stockpredictor/venv/bin/python app.py
+Restart=always
+RestartSec=10
+StandardOutput=append:/var/log/stockpredictor.log
+StandardError=append:/var/log/stockpredictor-error.log
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/stockpredictor
+
+[Install]
+WantedBy=multi-user.target

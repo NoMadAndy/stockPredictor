@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  stockpredictor:
+    build: .
+    container_name: stockpredictor
+    ports:
+      - "8001:8001"
+    environment:
+      - PORT=8001
+      - SECRET_KEY=${SECRET_KEY:-dev_secret_change_in_production}
+      - DEBUG=false
+      - NEWSAPI_KEY=${NEWSAPI_KEY:-}
+    volumes:
+      # Optional: Mount news API key file if using file-based config
+      - ./news_api_key.txt:/app/news_api_key.txt:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8001')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
