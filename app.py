@@ -60,7 +60,12 @@ def download_data(symbol: str, start: str, end: str) -> pd.DataFrame:
     df = yf.download(symbol, start=start, end=end, progress=False)
 
     if df is None or df.empty:
-        raise ValueError("Keine Kursdaten für Symbol/Zeitraum gefunden.")
+        raise ValueError(
+            f"Keine Kursdaten für Symbol '{symbol}' gefunden. "
+            f"Mögliche Ursachen: Das Symbol ist ungültig, wurde delisted, "
+            f"oder es liegen keine Daten für den angegebenen Zeitraum vor. "
+            f"Bitte überprüfen Sie das Tickersymbol und versuchen Sie es erneut."
+        )
 
     if isinstance(df.columns, pd.MultiIndex):
         try:
@@ -293,7 +298,7 @@ def index():
     start_default = end_default - timedelta(days=365 * 2)
     return render_template(
         "index.html",
-        default_symbol="DAC",
+        default_symbol="AAPL",
         default_start=start_default.isoformat(),
         default_end=end_default.isoformat(),
     )
@@ -302,7 +307,7 @@ def index():
 @app.route("/api/train_predict", methods=["POST"])
 def api_train_predict():
     p = request.get_json()
-    symbol = (p.get("symbol") or "DAC").upper()
+    symbol = (p.get("symbol") or "AAPL").upper()
     start = p.get("start")
     end = p.get("end")
     steps = int(p.get("steps") or 10)
@@ -450,8 +455,18 @@ def api_train_predict():
         )
 
     except Exception as e:
-        log(f"Fehler: {e}")
-        return jsonify({"error": str(e)}), 400
+        error_msg = str(e)
+        log(f"Fehler: {error_msg}")
+        
+        # Provide helpful suggestions for common errors
+        if "Keine Kursdaten" in error_msg or "delisted" in error_msg.lower():
+            suggestion = (
+                f" Vorschläge: Versuchen Sie bekannte Symbole wie AAPL (Apple), "
+                f"MSFT (Microsoft), GOOGL (Google), TSLA (Tesla), oder AMZN (Amazon)."
+            )
+            error_msg = error_msg + suggestion
+        
+        return jsonify({"error": error_msg}), 400
 
 
 if __name__ == "__main__":

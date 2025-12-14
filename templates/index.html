@@ -113,7 +113,7 @@
                 value="{{ default_symbol }}"
               />
               <div class="form-text text-muted">
-                z.B. AAPL, MSFT, TSLA oder DAC
+                z.B. AAPL, MSFT, GOOGL, TSLA, AMZN
               </div>
             </div>
 
@@ -452,7 +452,7 @@
         // Gemeinsame Funktion: Vorhersage starten
         // ------------------------------------
         async function runForecast() {
-          const symbol = (symbolInput.value || "DAC").trim();
+          const symbol = (symbolInput.value || "AAPL").trim();
           const start = startInput.value;
           const end = endInput.value;
           const steps = parseInt(stepsInput.value || "10", 10);

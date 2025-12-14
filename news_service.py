@@ -100,7 +100,12 @@ def get_symbol_name(symbol: str, logger=None) -> str:
         if name:
             return str(name)
     except Exception as e:
-        _log(logger, f"get_symbol_name Fehler: {e}")
+        # Log the error but don't raise - just return the symbol as fallback
+        error_msg = str(e)
+        if "Expecting value" in error_msg or "No timezone found" in error_msg:
+            _log(logger, f"Symbol '{symbol}' konnte nicht abgerufen werden (möglicherweise ungültig oder delisted)")
+        else:
+            _log(logger, f"get_symbol_name Fehler: {e}")
     return symbol
 
 
