@@ -1,0 +1,1285 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <title>Stock Forecast WebApp</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <!-- Favicon -->
+    <link
+      rel="icon"
+      type="image/x-icon"
+      href="{{ url_for('static', filename='favicon.ico') }}"
+    />
+
+    <!-- Bootstrap CSS -->
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+
+    <!-- Plotly -->
+    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+
+    <!-- Socket.IO Client -->
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+
+    <style>
+      body {
+        padding: 20px;
+        background: #0b1520;
+      }
+      h1,
+      h4 {
+        color: #f8f9fa;
+      }
+      .card {
+        border-radius: 1rem;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+      }
+      .card-header {
+        border-radius: 1rem 1rem 0 0 !important;
+      }
+      #controls-header {
+        cursor: pointer;
+      }
+      #log-window {
+        background: #050910;
+        color: #0f0;
+        height: 260px;
+        overflow-y: auto;
+        padding: 10px;
+        border-radius: 0.75rem;
+        font-family: monospace;
+        font-size: 0.85rem;
+      }
+      .chart-container {
+        height: 60vh;
+        min-height: 300px;
+        width: 100%;
+      }
+      .badge-demo {
+        font-size: 0.75rem;
+      }
+      label.form-label {
+        color: #e9ecef;
+      }
+      .news-item {
+        border-top: 1px solid #343a40;
+        padding-top: 0.6rem;
+        margin-top: 0.6rem;
+      }
+      .news-item:first-child {
+        border-top: none;
+        padding-top: 0;
+        margin-top: 0;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="container-xxl">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+          <h1 class="mb-0">Aktienkurs-Vorhersage</h1>
+          <span class="text-secondary"
+            >Machine-Learning Demo – keine Anlageberatung</span
+          >
+        </div>
+        <span class="badge bg-warning text-dark badge-demo"
+          >Demo / Paper-Trading only</span
+        >
+      </div>
+
+      <!-- Steuer-Panel -->
+      <div class="card mb-4 bg-dark text-light">
+        <div
+          id="controls-header"
+          class="card-header bg-gradient bg-primary text-light d-flex justify-content-between align-items-center"
+          data-bs-toggle="collapse"
+          data-bs-target="#controls-body"
+        >
+          <strong>Einstellungen &amp; Indikatoren</strong>
+          <span class="small text-light-50">Klicken zum Ein-/Ausklappen</span>
+        </div>
+        <div id="controls-body" class="card-body collapse show">
+          <div class="row g-3 mb-3">
+            <div class="col-md-3">
+              <label class="form-label">Aktiensymbol</label>
+              <input
+                id="symbol"
+                type="text"
+                class="form-control"
+                value="{{ default_symbol }}"
+              />
+              <div class="form-text text-muted">
+                z.B. AAPL, MSFT, TSLA oder DAC
+              </div>
+            </div>
+
+            <div class="col-md-3">
+              <label class="form-label">Startdatum</label>
+              <input
+                id="start-date"
+                type="date"
+                class="form-control"
+                value="{{ default_start }}"
+              />
+            </div>
+
+            <div class="col-md-3">
+              <label class="form-label">Enddatum</label>
+              <input
+                id="end-date"
+                type="date"
+                class="form-control"
+                value="{{ default_end }}"
+              />
+            </div>
+
+            <div class="col-md-3">
+              <label class="form-label">Vorhersage-Tage</label>
+              <input
+                id="steps"
+                type="number"
+                class="form-control"
+                min="1"
+                max="60"
+                value="10"
+              />
+            </div>
+          </div>
+
+          <div class="row g-3 mb-3">
+            <div class="col-md-4">
+              <label class="form-label"
+                >Schwelle für Long/Short-Signal (% Änderung)</label
+              >
+              <input
+                id="threshold"
+                type="number"
+                class="form-control"
+                min="0.1"
+                max="10"
+                step="0.1"
+                value="1.0"
+              />
+              <div class="form-text text-muted">
+                z.B. 1.0 %: erst ab dieser prognostizierten Bewegung wird ein
+                bull/bear-Signal simuliert.
+              </div>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label"
+                >Segmentlänge für Trend &amp; Support (Anzahl Kerzen)</label
+              >
+              <input
+                id="segment-len"
+                type="number"
+                class="form-control"
+                min="30"
+                max="500"
+                value="120"
+              />
+              <div class="form-text text-muted">
+                Je höher, desto „längerfristiger“ werden Trend &amp;
+                Unterstützungen betrachtet.
+              </div>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label"
+                >Haltedauer (Tage) für simuliertes Signal</label
+              >
+              <input
+                id="horizon"
+                type="number"
+                class="form-control"
+                min="1"
+                max="60"
+                value="1"
+              />
+              <div class="form-text text-muted">
+                Wie viele Tage in die Zukunft das Signal betrachtet (max.
+                Vorhersage-Tage).
+              </div>
+            </div>
+          </div>
+
+          <div class="row g-3 align-items-start">
+            <div class="col-md-6">
+              <label class="form-label">Technische Indikatoren / Linien</label>
+              <div class="border rounded p-2">
+                <div class="form-check">
+                  <input
+                    class="form-check-input indicator-check"
+                    type="checkbox"
+                    value="sma20"
+                    id="ind-sma20"
+                  />
+                  <label class="form-check-label" for="ind-sma20">
+                    SMA 20
+                  </label>
+                </div>
+                <div class="form-check">
+                  <input
+                    class="form-check-input indicator-check"
+                    type="checkbox"
+                    value="ema20"
+                    id="ind-ema20"
+                  />
+                  <label class="form-check-label" for="ind-ema20">
+                    EMA 20
+                  </label>
+                </div>
+                <div class="form-check">
+                  <input
+                    class="form-check-input indicator-check"
+                    type="checkbox"
+                    value="rsi14"
+                    id="ind-rsi14"
+                  />
+                  <label class="form-check-label" for="ind-rsi14">
+                    RSI 14
+                  </label>
+                </div>
+                <div class="form-check">
+                  <input
+                    class="form-check-input indicator-check"
+                    type="checkbox"
+                    value="macd"
+                    id="ind-macd"
+                  />
+                  <label class="form-check-label" for="ind-macd">
+                    MACD
+                  </label>
+                </div>
+                <div class="form-check">
+                  <input
+                    class="form-check-input indicator-check"
+                    type="checkbox"
+                    value="bb"
+                    id="ind-bb"
+                    checked
+                  />
+                  <label class="form-check-label" for="ind-bb">
+                    Bollinger Bänder
+                  </label>
+                </div>
+                <div class="form-check">
+                  <input
+                    class="form-check-input indicator-check"
+                    type="checkbox"
+                    value="sr"
+                    id="ind-sr"
+                  />
+                  <label class="form-check-label" for="ind-sr">
+                    Support/Widerstand (Segment)
+                  </label>
+                </div>
+                <div class="form-check">
+                  <input
+                    class="form-check-input indicator-check"
+                    type="checkbox"
+                    value="trend"
+                    id="ind-trend"
+                    checked
+                  />
+                  <label class="form-check-label" for="ind-trend">
+                    Lineare Trendlinie (Segment)
+                  </label>
+                </div>
+              </div>
+              <div class="form-text text-muted">
+                Indikatoren einfach nach Bedarf an- oder abwählen.
+              </div>
+            </div>
+
+            <div class="col-md-6 d-flex justify-content-center">
+              <div class="w-75 mt-3 mt-md-0">
+                <div class="d-grid gap-2">
+                  <button id="run-btn" class="btn btn-lg btn-success">
+                    🔮 Trainieren &amp; Vorhersagen
+                  </button>
+                  <button id="reset-btn" class="btn btn-outline-light btn-sm">
+                    Zurücksetzen
+                  </button>
+                </div>
+                <div class="form-text text-center text-muted mt-1">
+                  Lädt Daten, trainiert das Modell und aktualisiert Charts,
+                  Kennzahlen &amp; Simulation.
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Kurs-Chart über volle Breite -->
+      <div class="row mb-4">
+        <div class="col-12">
+          <div class="card bg-dark text-light">
+            <div class="card-header bg-gradient bg-secondary text-light">
+              <strong>Kursverlauf &amp; Vorhersage</strong>
+            </div>
+            <div class="card-body">
+              <div id="chart" class="chart-container"></div>
+              <div
+                id="chart-subtitle"
+                class="text-secondary small mt-2"
+                style="min-height: 1.2em"
+              ></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Backtest & Log nebeneinander -->
+      <div class="row g-4 mb-4">
+        <div class="col-lg-4">
+          <div class="card bg-dark text-light h-100">
+            <div class="card-header bg-gradient bg-secondary text-light">
+              <strong>Backtest &amp; Signal (Simulation)</strong>
+            </div>
+            <div class="card-body">
+              <div id="backtest-chart" style="height: 220px; width: 100%;"></div>
+              <div
+                id="backtest-bar"
+                style="height: 180px; width: 100%; margin-top: 24px;"
+              ></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-lg-8">
+          <div class="card bg-dark text-light h-100">
+            <div class="card-header bg-gradient bg-secondary text-light">
+              <strong>Log / Erläuterungen</strong>
+            </div>
+            <div class="card-body">
+              <div id="log-window"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Kennzahlen + News nebeneinander -->
+      <div class="row mb-4">
+        <div class="col-lg-6 mb-3 mb-lg-0">
+          <div class="card bg-dark text-light h-100">
+            <div class="card-header bg-gradient bg-secondary text-light">
+              <strong>Aktuelle Kennzahlen</strong>
+            </div>
+            <div class="card-body">
+              <div id="quote-panel" class="small"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-lg-6">
+          <div class="card bg-dark text-light h-100">
+            <div class="card-header bg-gradient bg-secondary text-light">
+              <strong>News &amp; Sentiment</strong>
+            </div>
+            <div class="card-body">
+              <div id="news-panel" class="small"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bootstrap JS Bundle -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+
+    <!-- App JS -->
+    <script>
+      document.addEventListener("DOMContentLoaded", () => {
+        const runBtn = document.getElementById("run-btn");
+        const resetBtn = document.getElementById("reset-btn");
+        const symbolInput = document.getElementById("symbol");
+        const startInput = document.getElementById("start-date");
+        const endInput = document.getElementById("end-date");
+        const stepsInput = document.getElementById("steps");
+        const thresholdInput = document.getElementById("threshold");
+        const segmentLenInput = document.getElementById("segment-len");
+        const horizonInput = document.getElementById("horizon");
+        const logWindow = document.getElementById("log-window");
+        const quotePanel = document.getElementById("quote-panel");
+        const newsPanel = document.getElementById("news-panel");
+        const chartSubtitle = document.getElementById("chart-subtitle");
+        const controlsBody = document.getElementById("controls-body");
+
+        const collapseControls = new bootstrap.Collapse(controlsBody, {
+          toggle: false,
+        });
+        let hasCollapsedOnce = false;
+
+        const initialState = {
+          symbol: symbolInput.value,
+          start: startInput.value,
+          end: endInput.value,
+          steps: stepsInput.value,
+          threshold: thresholdInput.value,
+          segmentLen: segmentLenInput.value,
+          horizon: horizonInput.value,
+          indicators: {
+            sma20: false,
+            ema20: false,
+            rsi14: false,
+            macd: false,
+            bb: true,
+            sr: false,
+            trend: true,
+          },
+        };
+
+        const socket = io();
+
+        socket.on("connect", () => appendLog("🔌 Verbunden mit Server"));
+        socket.on("log", (data) => {
+          if (data && data.message) appendLog(data.message);
+        });
+
+        function appendLog(msg) {
+          const ts = new Date().toLocaleTimeString();
+          const line = document.createElement("div");
+          line.textContent = "[" + ts + "] " + msg;
+          logWindow.appendChild(line);
+          logWindow.scrollTop = logWindow.scrollHeight;
+        }
+
+        // ------------------------------------
+        // Gemeinsame Funktion: Vorhersage starten
+        // ------------------------------------
+        async function runForecast() {
+          const symbol = (symbolInput.value || "DAC").trim();
+          const start = startInput.value;
+          const end = endInput.value;
+          const steps = parseInt(stepsInput.value || "10", 10);
+          const thresholdPct = parseFloat(thresholdInput.value || "1.0");
+          const segmentLen = parseInt(segmentLenInput.value || "120", 10);
+          const horizonDays = parseInt(horizonInput.value || "1", 10);
+
+          appendLog(
+            "Sende Anfrage für " +
+              symbol +
+              " (Threshold=" +
+              thresholdPct.toFixed(2) +
+              "%, Segment=" +
+              segmentLen +
+              ", Haltedauer=" +
+              horizonDays +
+              " Tage)..."
+          );
+
+          try {
+            const res = await fetch("/api/train_predict", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                symbol,
+                start,
+                end,
+                steps,
+                threshold_pct: thresholdPct,
+                segment_len: segmentLen,
+                horizon_days: horizonDays,
+              }),
+            });
+
+            const data = await res.json();
+
+            if (!res.ok) {
+              appendLog("❌ Fehler: " + (data.error || "Unbekannter Fehler"));
+              return;
+            }
+
+            updateChart(data);
+            updateBacktestCharts(data);
+            updateQuoteAndNews(data);
+            logSignalAndBacktest(data);
+            appendLog("Charts, Kennzahlen & Backtest aktualisiert.");
+
+            if (!hasCollapsedOnce) {
+              collapseControls.hide();
+              hasCollapsedOnce = true;
+            }
+          } catch (err) {
+            appendLog("❌ Netzwerkfehler: " + err.message);
+          }
+        }
+
+        // Klick auf Button
+        runBtn.addEventListener("click", () => {
+          runForecast();
+        });
+
+        // Enter im Symbolfeld startet Berechnung
+        symbolInput.addEventListener("keydown", (ev) => {
+          if (ev.key === "Enter") {
+            ev.preventDefault();
+            runForecast();
+          }
+        });
+
+        resetBtn.addEventListener("click", () => {
+          symbolInput.value = initialState.symbol;
+          startInput.value = initialState.start;
+          endInput.value = initialState.end;
+          stepsInput.value = initialState.steps;
+          thresholdInput.value = initialState.threshold;
+          segmentLenInput.value = initialState.segmentLen;
+          horizonInput.value = initialState.horizon;
+
+          document
+            .querySelectorAll(".indicator-check")
+            .forEach((el) => (el.checked = false));
+          document.getElementById("ind-bb").checked =
+            initialState.indicators.bb;
+          document.getElementById("ind-trend").checked =
+            initialState.indicators.trend;
+
+          Plotly.purge("chart");
+          Plotly.purge("backtest-chart");
+          Plotly.purge("backtest-bar");
+          quotePanel.innerHTML = "";
+          newsPanel.innerHTML = "";
+          chartSubtitle.textContent = "";
+
+          logWindow.innerHTML = "";
+          appendLog("UI auf Standardwerte zurückgesetzt.");
+          appendLog(
+            "Legende: Backtest & Signale sind reine Simulation – keine Trading-Empfehlung."
+          );
+
+          collapseControls.show();
+          hasCollapsedOnce = false;
+        });
+
+        function getSelectedIndicators() {
+          return Array.from(
+            document.querySelectorAll(".indicator-check:checked")
+          ).map((el) => el.value);
+        }
+
+        function updateChart(data) {
+          const selected = getSelectedIndicators();
+          const traces = [];
+
+          const hist = data.history || [];
+          const levels = data.levels || {};
+          const trend = data.trend || {};
+          const signal = data.signal || {};
+          const symbol = data.symbol || "";
+          const symbolName = data.symbol_name || "";
+          const params = data.params || {};
+
+          const thresholdPct =
+            typeof params.threshold_pct === "number"
+              ? params.threshold_pct
+              : null;
+          const segmentLen =
+            typeof params.segment_len === "number" ? params.segment_len : null;
+          const horizonDays =
+            typeof params.horizon_days === "number"
+              ? params.horizon_days
+              : null;
+
+          const titleText =
+            symbol && symbolName ? symbol + " – " + symbolName : symbol;
+
+          const supports = levels.supports || [];
+          const resistances = levels.resistances || [];
+          const levelStart = levels.start_date;
+          const levelEnd = levels.end_date;
+
+          let histDates = [];
+          if (hist.length > 0) {
+            histDates = hist.map((d) => d.date);
+            traces.push({
+              x: histDates,
+              y: hist.map((d) => d.close),
+              name: "Close",
+              mode: "lines",
+            });
+          }
+
+          const fc = data.forecast || [];
+          let fcDates = [];
+          if (fc.length > 0) {
+            fcDates = fc.map((d) => d.date);
+            traces.push({
+              x: fcDates,
+              y: fc.map((d) => d.pred),
+              name: "Forecast",
+              mode: "lines",
+              line: { dash: "dot" },
+            });
+          }
+
+          if (selected.includes("sr") && levelStart && levelEnd) {
+            supports.forEach((lvl) => {
+              traces.push({
+                x: [levelStart, levelEnd],
+                y: [lvl, lvl],
+                name: "Support " + lvl.toFixed(2),
+                mode: "lines",
+                line: { dash: "dot" },
+              });
+            });
+            resistances.forEach((lvl) => {
+              traces.push({
+                x: [levelStart, levelEnd],
+                y: [lvl, lvl],
+                name: "Widerstand " + lvl.toFixed(2),
+                mode: "lines",
+                line: { dash: "dot" },
+              });
+            });
+          }
+
+          if (selected.includes("trend")) {
+            const th = trend.hist || [];
+            const tf = trend.forecast || [];
+
+            if (th.length > 0) {
+              traces.push({
+                x: th.map((d) => d.date),
+                y: th.map((d) => d.value),
+                name: "Trend (Segment)",
+                mode: "lines",
+                line: { dash: "dash" },
+              });
+            }
+
+            if (tf.length > 0) {
+              traces.push({
+                x: tf.map((d) => d.date),
+                y: tf.map((d) => d.value),
+                name: "Trend (Proj.)",
+                mode: "lines",
+                line: { dash: "dashdot" },
+              });
+            }
+          }
+
+          const ind = data.indicators || {};
+
+          if (selected.includes("sma20") && ind.sma20)
+            traces.push(indTrace(ind.sma20, "SMA 20"));
+          if (selected.includes("ema20") && ind.ema20)
+            traces.push(indTrace(ind.ema20, "EMA 20"));
+          if (selected.includes("rsi14") && ind.rsi14)
+            traces.push(indTrace(ind.rsi14, "RSI 14"));
+          if (selected.includes("macd") && ind.macd)
+            traces.push(indTrace(ind.macd, "MACD"));
+          if (selected.includes("bb")) {
+            if (ind.bb_upper) traces.push(indTrace(ind.bb_upper, "BB Upper"));
+            if (ind.bb_lower) traces.push(indTrace(ind.bb_lower, "BB Lower"));
+          }
+
+          if (hist.length > 0) {
+            const lastHist = hist[hist.length - 1];
+
+            traces.push({
+              x: [lastHist.date],
+              y: [lastHist.close],
+              name: "Letzter Kurs",
+              mode: "markers",
+              marker: { size: 9, symbol: "circle-open" },
+              showlegend: false,
+            });
+          }
+
+          if (fc.length > 0 && signal && signal.type) {
+            const hz =
+              typeof horizonDays === "number" && horizonDays > 0
+                ? horizonDays
+                : 1;
+            const idx = Math.min(hz - 1, fc.length - 1);
+            const sigPoint = fc[idx];
+
+            let color = "gray";
+            if (signal.type === "bullish") color = "lime";
+            else if (signal.type === "bearish") color = "red";
+
+            traces.push({
+              x: [sigPoint.date],
+              y: [sigPoint.pred],
+              mode: "markers",
+              marker: { size: 10, symbol: "diamond", color: color },
+              name: "Signalpunkt",
+              showlegend: false,
+            });
+
+            traces.push({
+              x: [0],
+              y: [0],
+              mode: "markers",
+              marker: { size: 0, opacity: 0 },
+              name: "Signalpunkt: grün=bullish, rot=bearish, grau=neutral",
+              hoverinfo: "skip",
+              visible: "legendonly",
+            });
+          }
+
+          const subtitleText =
+            "Signalschwelle: " +
+            (thresholdPct !== null ? thresholdPct.toFixed(2) + " %" : "n/a") +
+            " · Segment: " +
+            (segmentLen !== null ? segmentLen + " Kerzen" : "n/a") +
+            " · Haltedauer: " +
+            (horizonDays !== null ? horizonDays + " Tage" : "n/a");
+          chartSubtitle.textContent = subtitleText;
+
+          let xRange = null;
+          const allDates = histDates.concat(fcDates);
+          if (allDates.length > 0) {
+            const n = allDates.length;
+            const startIdx = Math.max(0, n - Math.round(n * 0.3));
+            xRange = [allDates[startIdx], allDates[n - 1]];
+          }
+
+          const layout = {
+            title: titleText,
+            paper_bgcolor: "#111827",
+            plot_bgcolor: "#111827",
+            font: { color: "#e9ecef", size: 11 },
+            xaxis: { title: "Datum", automargin: true, tickangle: -30 },
+            yaxis: { title: "Preis / Indikator", automargin: true },
+            margin: { t: 60, r: 40, l: 60, b: 90 },
+            legend: {
+              orientation: "h",
+              x: 0.5,
+              xanchor: "center",
+              y: -0.2,
+              yanchor: "top",
+            },
+            dragmode: "pan",
+          };
+
+          if (xRange) layout.xaxis.range = xRange;
+
+          Plotly.newPlot("chart", traces, layout, {
+            responsive: true,
+            scrollZoom: true,
+            displaylogo: false,
+          });
+        }
+
+        function indTrace(series, name) {
+          if (!series) return {};
+          return {
+            x: series.map((d) => d.date),
+            y: series.map((d) => d.value),
+            name: name,
+            mode: "lines",
+          };
+        }
+
+        function updateBacktestCharts(data) {
+          const backtest = data.backtest || {};
+          const n = backtest.n_trades || 0;
+          const hit = backtest.hit_rate;
+          const avg = backtest.avg_return;
+
+          if (n > 0 && hit != null) {
+            const wins = Math.round(hit * n);
+            const losses = n - wins;
+            const donutData = [
+              {
+                values: [wins, losses],
+                labels: ["Gewinn-Trades", "Verlust-Trades"],
+                type: "pie",
+                hole: 0.5,
+                textinfo: "label+value",
+              },
+            ];
+            Plotly.newPlot(
+              "backtest-chart",
+              donutData,
+              {
+                title: "Backtest: Verteilung der Trades",
+                paper_bgcolor: "#212529",
+                plot_bgcolor: "#212529",
+                font: { color: "#e9ecef", size: 10 },
+                margin: { t: 70, b: 10, l: 10, r: 10 },
+                showlegend: true,
+              },
+              {
+                responsive: true,
+                displaylogo: false,
+                displayModeBar: false,
+              }
+            );
+          } else {
+            Plotly.newPlot(
+              "backtest-chart",
+              [],
+              {
+                title: "Backtest: Keine verwertbaren Trades",
+                paper_bgcolor: "#212529",
+                plot_bgcolor: "#212529",
+                font: { color: "#e9ecef", size: 10 },
+                margin: { t: 70, b: 10, l: 10, r: 10 },
+              },
+              {
+                responsive: true,
+                displaylogo: false,
+                displayModeBar: false,
+              }
+            );
+          }
+
+          if (avg != null) {
+            const avgPct = avg * 100;
+            const barData = [
+              {
+                x: ["Ø Return/Trade"],
+                y: [avgPct],
+                type: "bar",
+              },
+            ];
+            Plotly.newPlot(
+              "backtest-bar",
+              barData,
+              {
+                title: "Ø Return pro Trade (Backtest)",
+                paper_bgcolor: "#212529",
+                plot_bgcolor: "#212529",
+                font: { color: "#e9ecef", size: 10 },
+                yaxis: { title: "%", zeroline: true },
+                margin: { t: 70, b: 40, l: 50, r: 10 },
+              },
+              {
+                responsive: true,
+                displaylogo: false,
+                displayModeBar: false,
+              }
+            );
+          } else {
+            Plotly.newPlot(
+              "backtest-bar",
+              [],
+              {
+                title: "Ø Return pro Trade (n/a)",
+                paper_bgcolor: "#212529",
+                plot_bgcolor: "#212529",
+                font: { color: "#e9ecef", size: 10 },
+                margin: { t: 70, b: 40, l: 50, r: 10 },
+              },
+              {
+                responsive: true,
+                displaylogo: false,
+                displayModeBar: false,
+              }
+            );
+          }
+        }
+
+        // -----------------------------
+        // "Intelligentere" News-Sentiment-Logik
+        // -----------------------------
+        function computeArticleScore(text) {
+          if (!text) return 0;
+          const t = text.toLowerCase();
+
+          const strongPos = [
+            "strong beat",
+            "beats expectations",
+            "raises guidance",
+            "hebt prognose an",
+            "record profit",
+            "rekordgewinn",
+            "upgrade to buy",
+          ];
+          const pos = [
+            "upgrade",
+            "buy",
+            "overweight",
+            "beat",
+            "beats",
+            "strong",
+            "rally",
+            "bull",
+            "bullish",
+            "positiv",
+            "rekord",
+            "gewinn",
+            "profit",
+            "outperform",
+            "growth",
+            "increase",
+            "steigt",
+            "wächst",
+          ];
+          const strongNeg = [
+            "profit warning",
+            "gewinnwarnung",
+            "misses expectations",
+            "misses estimates",
+            "downgrade to sell",
+            "job cuts",
+            "entlassungen",
+            "mass layoffs",
+          ];
+          const neg = [
+            "downgrade",
+            "sell",
+            "underweight",
+            "miss",
+            "falls",
+            "plunge",
+            "drop",
+            "bear",
+            "bearish",
+            "warnung",
+            "verlust",
+            "weak",
+            "schwach",
+            "cut",
+            "downtick",
+            "senkt prognose",
+            "sinkende nachfrage",
+          ];
+
+          const negators = ["nicht", "kein", "keine", "ohne"];
+
+          let score = 0;
+
+          function countMatches(words, weight) {
+            words.forEach((w) => {
+              let idx = t.indexOf(w);
+              while (idx !== -1) {
+                const windowStart = Math.max(0, idx - 20);
+                const context = t.slice(windowStart, idx);
+                let localWeight = weight;
+                negators.forEach((n) => {
+                  if (context.includes(n + " ")) {
+                    localWeight *= -0.5;
+                  }
+                });
+                score += localWeight;
+                idx = t.indexOf(w, idx + w.length);
+              }
+            });
+          }
+
+          countMatches(strongPos, 2.0);
+          countMatches(pos, 1.0);
+          countMatches(strongNeg, -2.0);
+          countMatches(neg, -1.0);
+
+          return score;
+        }
+
+        function interpretNewsSentiment(news, quote) {
+          if (!news || news.length === 0) {
+            return {
+              label: "Keine News verfügbar",
+              detail:
+                "Es liegen aktuell keine verwertbaren News vor – es kann kein Stimmungsbild abgeleitet werden.",
+              trend: "neutral",
+              perArticle: [],
+            };
+          }
+
+          let newsScore = 0;
+          let counted = 0;
+          const perArticle = [];
+
+          news.forEach((item) => {
+            const text = (
+              (item.title || "") +
+              " " +
+              (item.summary || "")
+            ).toLowerCase();
+            if (!text.trim()) {
+              perArticle.push({ score: 0, label: "neutral", trend: "neutral" });
+              return;
+            }
+            const s = computeArticleScore(text);
+            newsScore += s;
+            counted += 1;
+
+            let label = "neutral";
+            let trend = "neutral";
+            if (s >= 2) {
+              label = "klar positiv";
+              trend = "up";
+            } else if (s > 0) {
+              label = "leicht positiv";
+              trend = "up";
+            } else if (s <= -2) {
+              label = "klar negativ";
+              trend = "down";
+            } else if (s < 0) {
+              label = "leicht negativ";
+              trend = "down";
+            }
+            perArticle.push({ score: s, label, trend });
+          });
+
+          if (counted === 0) {
+            return {
+              label: "Keine klar interpretierbaren News",
+              detail:
+                "Die verfügbaren Meldungen sind zu vage oder ohne Inhalt, um eine Richtung abzuleiten.",
+              trend: "neutral",
+              perArticle,
+            };
+          }
+
+          let priceAdj = 0;
+          if (
+            quote &&
+            quote.lastPrice != null &&
+            quote.previousClose != null &&
+            quote.previousClose !== 0
+          ) {
+            const delta =
+              (quote.lastPrice - quote.previousClose) / quote.previousClose;
+            if (delta > 0.015) priceAdj = 1;
+            else if (delta < -0.015) priceAdj = -1;
+          }
+
+          const avgNewsScore = newsScore / counted;
+          const combinedScore = avgNewsScore + priceAdj;
+
+          let label, detail, trend;
+
+          if (combinedScore >= 2.5) {
+            label = "klar positiv";
+            detail =
+              "Die News-Lage und die jüngste Kursreaktion wirken deutlich positiv – es überwiegen klar optimistische Signale in den Schlagzeilen.";
+            trend = "up";
+          } else if (combinedScore >= 1) {
+            label = "überwiegend positiv";
+            detail =
+              "Die News enthalten mehr positive als negative Hinweise. Zusammen mit der Kursreaktion ergibt sich eine eher aufwärtsgerichtete Stimmung.";
+            trend = "up";
+          } else if (combinedScore <= -2.5) {
+            label = "klar negativ";
+            detail =
+              "Nachrichtenlage und ggf. Kursreaktion deuten deutlich auf Vorsicht hin – es dominieren negative Formulierungen.";
+            trend = "down";
+          } else if (combinedScore <= -1) {
+            label = "überwiegend negativ";
+            detail =
+              "In Summe überwiegen negative Stichworte oder kritische Meldungen. Die Stimmung wirkt eher abwärtsgerichtet.";
+            trend = "down";
+          } else {
+            label = "gemischt / neutral";
+            detail =
+              "Weder klar positive noch klar negative Signale dominieren. Insgesamt erscheint die Nachrichtenlage eher gemischt.";
+            trend = "neutral";
+          }
+
+          return { label, detail, trend, perArticle };
+        }
+
+        function updateQuoteAndNews(data) {
+          const quote = data.quote || {};
+          const news = data.news || [];
+          const symbol = data.symbol || "";
+          const symbolName = data.symbol_name || "";
+
+          let html = "";
+          html += "<div><strong>" + (symbol || "") + "</strong>";
+          if (symbolName) html += " – " + symbolName;
+          html += "</div>";
+
+          function fmt(val, digits = 2) {
+            if (val === null || val === undefined) return "n/a";
+            if (typeof val === "number") return val.toFixed(digits);
+            return String(val);
+          }
+
+          const currency = quote.currency || "";
+          html += "<table class='table table-sm table-dark mt-2 mb-1'><tbody>";
+          html +=
+            "<tr><td>Aktueller Preis</td><td>" +
+            (quote.lastPrice != null
+              ? fmt(quote.lastPrice, 2) + " " + currency
+              : "n/a") +
+            "</td></tr>";
+          html +=
+            "<tr><td>Vortagesschluss</td><td>" +
+            (quote.previousClose != null
+              ? fmt(quote.previousClose, 2) + " " + currency
+              : "n/a") +
+            "</td></tr>";
+          html +=
+            "<tr><td>52W-Spanne</td><td>" +
+            (quote.week52Low != null ? fmt(quote.week52Low, 2) : "?") +
+            " – " +
+            (quote.week52High != null ? fmt(quote.week52High, 2) : "?") +
+            " " +
+            currency +
+            "</td></tr>";
+          html +=
+            "<tr><td>Marktkap.</td><td>" +
+            (quote.marketCap != null
+              ? (quote.marketCap / 1e9).toFixed(2) + " Mrd."
+              : "n/a") +
+            "</td></tr>";
+          html +=
+            "<tr><td>KGV</td><td>" +
+            (quote.pe != null ? fmt(quote.pe, 2) : "n/a") +
+            "</td></tr>";
+          html += "</tbody></table>";
+
+          quotePanel.innerHTML = html;
+
+          if (!news || news.length === 0) {
+            newsPanel.innerHTML =
+              "<em>Keine aktuellen News aus yfinance/externer API verfügbar.</em>";
+            return;
+          }
+
+          const sentiment = interpretNewsSentiment(news, quote);
+
+          let nhtml = "";
+          nhtml +=
+            "<div class='alert alert-secondary py-2 px-3 mb-3 small text-dark'>";
+          nhtml +=
+            "<strong>Stimmungsbild (heuristisch): </strong>" +
+            sentiment.label +
+            "<br/><span>" +
+            sentiment.detail +
+            " Diese Einschätzung basiert auf einer einfachen Text- und Kursanalyse und ist keine Empfehlung.</span>";
+          nhtml += "</div>";
+
+          let rendered = 0;
+          nhtml += "<div class='mb-2'><strong>News – Kurzüberblick:</strong></div>";
+          news.forEach((item, idx) => {
+            if (!item.title || !item.link) return;
+            let dateStr = "";
+            if (item.providerPublishTime) {
+              try {
+                const d = new Date(item.providerPublishTime * 1000);
+                dateStr = d.toLocaleDateString();
+              } catch (e) {}
+            }
+            let summary = item.summary || "";
+            if (summary && summary.length > 260) {
+              summary = summary.slice(0, 260) + " …";
+            }
+
+            const artSent =
+              sentiment.perArticle && sentiment.perArticle[idx]
+                ? sentiment.perArticle[idx]
+                : { label: "neutral", trend: "neutral" };
+
+            let badgeClass = "bg-secondary";
+            if (artSent.trend === "up") badgeClass = "bg-success";
+            else if (artSent.trend === "down") badgeClass = "bg-danger";
+
+            nhtml += "<div class='news-item'>";
+            nhtml +=
+              "<div class='d-flex justify-content-between align-items-start'>";
+            nhtml +=
+              "<a href='" +
+              item.link +
+              "' target='_blank' class='link-info fw-semibold d-block me-2'>" +
+              item.title +
+              "</a>";
+            nhtml +=
+              "<span class='badge " +
+              badgeClass +
+              " ms-2'>" +
+              artSent.label +
+              "</span>";
+            nhtml += "</div>";
+            nhtml += "<small class='text-muted d-block'>";
+            if (item.publisher) nhtml += item.publisher + " · ";
+            if (dateStr) nhtml += dateStr;
+            nhtml += "</small>";
+            if (summary) {
+              nhtml += "<div class='mt-1'>" + summary + "</div>";
+            }
+            nhtml += "</div>";
+            rendered += 1;
+          });
+
+          if (rendered === 0) {
+            newsPanel.innerHTML =
+              "<em>News-Daten vorhanden, aber ohne verwertbare Inhalte (Titel/Links).</em>";
+          } else {
+            newsPanel.innerHTML = nhtml;
+          }
+
+          let trendText = "neutral";
+          if (sentiment.trend === "up")
+            trendText = "tendenziell aufwärtsgerichtet";
+          else if (sentiment.trend === "down")
+            trendText = "tendenziell abwärtsgerichtet";
+
+          appendLog(
+            "📰 News-Stimmung (heuristisch, inkl. Kursreaktion): " +
+              sentiment.label +
+              " – " +
+              trendText +
+              ". (Nur vereinfachte Analyse, keine Empfehlung.)"
+          );
+        }
+
+        function logSignalAndBacktest(data) {
+          const signal = data.signal || {};
+          const backtest = data.backtest || {};
+          const params = data.params || {};
+
+          if (signal.type) {
+            const dir =
+              signal.type === "bullish"
+                ? "bullish (theoretischer Call-Bias)"
+                : signal.type === "bearish"
+                ? "bearish (theoretischer Put-Bias)"
+                : "neutral (kein klares Signal)";
+
+            const deltaPct = (signal.delta_pct || 0) * 100;
+            const txt =
+              "📈 Simuliertes Modell-Signal über " +
+              (signal.horizon_days || 1) +
+              " Tag(e): " +
+              dir +
+              ", erwartete Änderung ~ " +
+              deltaPct.toFixed(2) +
+              " % (Schwelle ±" +
+              (signal.threshold_pct || params.threshold_pct || 1).toFixed(2) +
+              " %).";
+
+            appendLog(txt);
+          }
+
+          if (backtest.n_trades && backtest.n_trades > 0) {
+            const hit = backtest.hit_rate != null ? backtest.hit_rate * 100 : null;
+            const avg = backtest.avg_return != null ? backtest.avg_return * 100 : null;
+
+            const txt2 =
+              "🔄 Pseudo-Backtest (Trainingsdaten, nur Simulation): Trades=" +
+              backtest.n_trades +
+              ", Trefferquote ~ " +
+              (hit != null ? hit.toFixed(1) + " %" : "n/a") +
+              ", Ø-Return/Trade ~ " +
+              (avg != null ? avg.toFixed(3) + " %" : "n/a") +
+              " bei Schwelle ±" +
+              ((backtest.threshold || params.threshold_pct / 100 || 0.01) *
+                100
+              ).toFixed(1) +
+              " %.";
+            appendLog(txt2);
+          } else {
+            appendLog(
+              "🔄 Pseudo-Backtest: Zu wenig Signal-Trades im Trainingsset (nur Simulation)."
+            );
+          }
+
+          appendLog(
+            "⚠️ Alles nur Modell-/Backtest-Simulation und heuristische News-Auswertung, keine echte Trading-Empfehlung."
+          );
+        }
+      });
+    </script>
+  </body>
+</html>
