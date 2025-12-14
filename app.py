@@ -10,6 +10,15 @@ from sklearn.ensemble import RandomForestRegressor
 
 from news_service import get_symbol_name, get_quote_and_news  # <--- NEU
 
+
+# -------------------------------------------------------------------
+# Custom Exceptions
+# -------------------------------------------------------------------
+class TickerDataError(Exception):
+    """Raised when ticker data cannot be fetched (invalid, delisted, etc.)"""
+    pass
+
+
 # -------------------------------------------------------------------
 # Flask + Socket.IO Setup
 # -------------------------------------------------------------------
@@ -60,7 +69,7 @@ def download_data(symbol: str, start: str, end: str) -> pd.DataFrame:
     df = yf.download(symbol, start=start, end=end, progress=False)
 
     if df is None or df.empty:
-        raise ValueError(
+        raise TickerDataError(
             f"Keine Kursdaten für Symbol '{symbol}' gefunden. "
             f"Mögliche Ursachen: Das Symbol ist ungültig, wurde delisted, "
             f"oder es liegen keine Daten für den angegebenen Zeitraum vor. "
@@ -454,18 +463,20 @@ def api_train_predict():
             }
         )
 
-    except Exception as e:
+    except TickerDataError as e:
+        # Handle ticker-specific errors with helpful suggestions
         error_msg = str(e)
         log(f"Fehler: {error_msg}")
-        
-        # Provide helpful suggestions for common errors
-        if "Keine Kursdaten" in error_msg or "delisted" in error_msg.lower():
-            suggestion = (
-                f" Vorschläge: Versuchen Sie bekannte Symbole wie AAPL (Apple), "
-                f"MSFT (Microsoft), GOOGL (Google), TSLA (Tesla), oder AMZN (Amazon)."
-            )
-            error_msg = error_msg + suggestion
-        
+        suggestion = (
+            f" Vorschläge: Versuchen Sie bekannte Symbole wie AAPL (Apple), "
+            f"MSFT (Microsoft), GOOGL (Google), TSLA (Tesla), oder AMZN (Amazon)."
+        )
+        return jsonify({"error": error_msg + suggestion}), 400
+    
+    except Exception as e:
+        # Handle other unexpected errors
+        error_msg = str(e)
+        log(f"Fehler: {error_msg}")
         return jsonify({"error": error_msg}), 400
 
 
