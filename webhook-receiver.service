@@ -5,11 +5,16 @@ Documentation=https://github.com/NoMadAndy/stockPredictor
 
 [Service]
 Type=simple
+# NOTE: Runs as root because it needs to execute deploy.sh which restarts services
+# In production, consider using sudo rules with a dedicated user instead
 User=root
 Group=root
 WorkingDirectory=/opt/stockpredictor
 Environment="WEBHOOK_PORT=9001"
-Environment="WEBHOOK_SECRET=change_this_in_production"
+# SECURITY: Change this webhook secret before deployment!
+# This must match the secret configured in GitHub webhook settings
+# Generate with: openssl rand -hex 32
+Environment="WEBHOOK_SECRET=PLEASE_CHANGE_THIS_WEBHOOK_SECRET_IN_PRODUCTION"
 ExecStart=/usr/bin/python3 /opt/stockpredictor/webhook_receiver.py
 Restart=always
 RestartSec=10

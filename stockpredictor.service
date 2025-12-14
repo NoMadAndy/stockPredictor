@@ -10,7 +10,9 @@ Group=www-data
 WorkingDirectory=/opt/stockpredictor
 Environment="PATH=/opt/stockpredictor/venv/bin"
 Environment="PORT=8001"
-Environment="SECRET_KEY=change_this_in_production"
+# SECURITY: Change this secret key before deployment!
+# Generate with: openssl rand -hex 32
+Environment="SECRET_KEY=PLEASE_CHANGE_THIS_SECRET_KEY_IN_PRODUCTION"
 Environment="DEBUG=false"
 ExecStart=/opt/stockpredictor/venv/bin/python app.py
 Restart=always

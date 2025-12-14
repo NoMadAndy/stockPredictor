@@ -73,12 +73,22 @@ export NEWSAPI_KEY="ihr-api-key"
 export NEWSAPI_KEY_FILE="/pfad/zur/key-datei.txt"
 ```
 
-### Secret Key
+### Secret Key (Erforderlich für Produktion!)
 
-Für Produktionsumgebungen sollte ein sicherer Secret Key gesetzt werden:
+**WICHTIG**: Für Produktionsumgebungen **muss** ein sicherer Secret Key gesetzt werden!
+
 ```bash
-export SECRET_KEY="ihr-sicherer-secret-key"
+# Secret Key generieren
+SECRET_KEY=$(openssl rand -hex 32)
+
+# Als Umgebungsvariable setzen
+export SECRET_KEY="$SECRET_KEY"
+
+# Oder in docker-compose.yml eintragen
+# Oder in der systemd Service-Datei konfigurieren
 ```
+
+⚠️ **Sicherheitshinweis**: Die Standard-Secrets in den Service-Dateien sind **nicht sicher** und müssen vor dem Deployment geändert werden! Siehe INSTALLATION.md für Details.
 
 ## Verwendung
 

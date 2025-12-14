@@ -67,8 +67,13 @@ sudo venv/bin/pip install -r requirements.txt
 sudo chown -R www-data:www-data /opt/stockpredictor
 sudo chmod +x deploy.sh
 
-# Systemd Service installieren
+# Systemd Service installieren und SECRET_KEY konfigurieren
 sudo cp stockpredictor.service /etc/systemd/system/
+
+# WICHTIG: Secret Key ändern!
+SECRET_KEY=$(openssl rand -hex 32)
+sudo sed -i "s/PLEASE_CHANGE_THIS_SECRET_KEY_IN_PRODUCTION/${SECRET_KEY}/" /etc/systemd/system/stockpredictor.service
+
 sudo systemctl daemon-reload
 sudo systemctl enable stockpredictor
 sudo systemctl start stockpredictor
@@ -102,16 +107,21 @@ sudo systemctl start webhook-receiver
 ### 2. Webhook Secret generieren
 
 ```bash
-# Zufälliges Secret generieren
+# Webhook Receiver Service installieren
+sudo cp webhook-receiver.service /etc/systemd/system/
+
+# Zufälliges Secret generieren und automatisch einsetzen
 WEBHOOK_SECRET=$(openssl rand -hex 32)
-echo $WEBHOOK_SECRET
+echo "Generiertes Webhook Secret: $WEBHOOK_SECRET"
+echo "WICHTIG: Notieren Sie dieses Secret für die GitHub Webhook-Konfiguration!"
 
 # Secret in Service-Datei eintragen
-sudo nano /etc/systemd/system/webhook-receiver.service
-# Ersetzen Sie "change_this_in_production" mit dem generierten Secret
+sudo sed -i "s/PLEASE_CHANGE_THIS_WEBHOOK_SECRET_IN_PRODUCTION/${WEBHOOK_SECRET}/" /etc/systemd/system/webhook-receiver.service
 
-# Service neu starten
-sudo systemctl restart webhook-receiver
+# Service aktivieren und starten
+sudo systemctl daemon-reload
+sudo systemctl enable webhook-receiver
+sudo systemctl start webhook-receiver
 ```
 
 ### 3. GitHub Webhook konfigurieren
