@@ -46,6 +46,8 @@ news_api_key.txt
 *.pem
 *.crt
 secret_key.txt
+provider_keys.json
+config/provider_keys.json
 
 # Logs
 *.log

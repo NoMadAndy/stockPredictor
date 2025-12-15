@@ -138,7 +138,7 @@
             </div>
 
             <div class="col-md-3">
-              <label class="form-label">Vorhersage-Tage</label>
+              <label class="form-label">Vorhersage-Schritte</label>
               <input
                 id="steps"
                 type="number"
@@ -147,6 +147,62 @@
                 max="60"
                 value="10"
               />
+              <div class="form-text text-muted">
+                Anzahl Perioden (Tage oder Bars)
+              </div>
+            </div>
+          </div>
+
+          <!-- Provider & Interval Selection -->
+          <div class="row g-3 mb-3">
+            <div class="col-md-3">
+              <label class="form-label">Datenanbieter</label>
+              <select id="provider" class="form-select">
+                <option value="yahoo" selected>Yahoo Finance (kostenlos)</option>
+                <option value="alpha_vantage">Alpha Vantage</option>
+                <option value="finnhub">Finnhub</option>
+                <option value="tiingo">Tiingo</option>
+              </select>
+            </div>
+
+            <div class="col-md-3">
+              <label class="form-label">API-Schlüssel (falls erforderlich)</label>
+              <input
+                id="api-key"
+                type="password"
+                class="form-control"
+                placeholder="Nur für kostenpflichtige APIs"
+              />
+              <div class="form-text text-muted">
+                <small id="provider-hint">Yahoo benötigt keinen Key</small>
+              </div>
+            </div>
+
+            <div class="col-md-3">
+              <label class="form-label">Intervall</label>
+              <select id="interval" class="form-select">
+                <option value="1d" selected>Täglich (1d)</option>
+                <option value="60m">Stündlich (60m)</option>
+                <option value="30m">30 Minuten</option>
+                <option value="15m">15 Minuten</option>
+                <option value="5m">5 Minuten</option>
+                <option value="1m">1 Minute</option>
+              </select>
+            </div>
+
+            <div class="col-md-3">
+              <label class="form-label">Lookback (für Intraday)</label>
+              <input
+                id="lookback-days"
+                type="number"
+                class="form-control"
+                min="1"
+                max="60"
+                value="7"
+              />
+              <div class="form-text text-muted">
+                Tage zurück (nur bei Intraday)
+              </div>
             </div>
           </div>
 
@@ -403,6 +459,11 @@
         const thresholdInput = document.getElementById("threshold");
         const segmentLenInput = document.getElementById("segment-len");
         const horizonInput = document.getElementById("horizon");
+        const providerSelect = document.getElementById("provider");
+        const apiKeyInput = document.getElementById("api-key");
+        const intervalSelect = document.getElementById("interval");
+        const lookbackInput = document.getElementById("lookback-days");
+        const providerHint = document.getElementById("provider-hint");
         const logWindow = document.getElementById("log-window");
         const quotePanel = document.getElementById("quote-panel");
         const newsPanel = document.getElementById("news-panel");
@@ -414,6 +475,15 @@
         });
         let hasCollapsedOnce = false;
 
+        // Load saved provider settings from localStorage
+        const savedProvider = localStorage.getItem("provider") || "yahoo";
+        const savedApiKey = localStorage.getItem("api_key_" + savedProvider) || "";
+        const savedInterval = localStorage.getItem("interval") || "1d";
+        
+        providerSelect.value = savedProvider;
+        apiKeyInput.value = savedApiKey;
+        intervalSelect.value = savedInterval;
+
         const initialState = {
           symbol: symbolInput.value,
           start: startInput.value,
@@ -422,6 +492,9 @@
           threshold: thresholdInput.value,
           segmentLen: segmentLenInput.value,
           horizon: horizonInput.value,
+          provider: savedProvider,
+          interval: savedInterval,
+          lookbackDays: lookbackInput.value,
           indicators: {
             sma20: false,
             ema20: false,
@@ -449,6 +522,74 @@
         }
 
         // ------------------------------------
+        // Provider & API Key Management
+        // ------------------------------------
+        const providerInfo = {
+          yahoo: { name: "Yahoo Finance", requiresKey: false, hint: "Kostenlos, kein API-Key erforderlich" },
+          alpha_vantage: { name: "Alpha Vantage", requiresKey: true, hint: "Kostenlosen Key bei alphavantage.co holen" },
+          finnhub: { name: "Finnhub", requiresKey: true, hint: "Kostenlosen Key bei finnhub.io holen" },
+          tiingo: { name: "Tiingo", requiresKey: true, hint: "Kostenlosen Key bei tiingo.com holen" }
+        };
+
+        function updateProviderHint() {
+          const provider = providerSelect.value;
+          const info = providerInfo[provider];
+          if (info) {
+            providerHint.textContent = info.hint;
+            apiKeyInput.disabled = !info.requiresKey;
+            if (!info.requiresKey) {
+              apiKeyInput.value = "";
+            }
+          }
+        }
+
+        // Save provider selection
+        providerSelect.addEventListener("change", () => {
+          const provider = providerSelect.value;
+          localStorage.setItem("provider", provider);
+          
+          // Load saved key for this provider
+          const savedKey = localStorage.getItem("api_key_" + provider) || "";
+          apiKeyInput.value = savedKey;
+          
+          updateProviderHint();
+        });
+
+        // Save API key when changed (also send to server for encryption)
+        apiKeyInput.addEventListener("blur", async () => {
+          const provider = providerSelect.value;
+          const apiKey = apiKeyInput.value.trim();
+          
+          if (apiKey) {
+            // Save to localStorage
+            localStorage.setItem("api_key_" + provider, apiKey);
+            
+            // Send to server for encrypted storage
+            try {
+              const res = await fetch("/api/provider_key", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ provider, api_key: apiKey })
+              });
+              
+              if (res.ok) {
+                appendLog("✓ API-Key für " + provider + " gespeichert");
+              }
+            } catch (err) {
+              console.error("Failed to save API key:", err);
+            }
+          }
+        });
+
+        // Save interval selection
+        intervalSelect.addEventListener("change", () => {
+          localStorage.setItem("interval", intervalSelect.value);
+        });
+
+        // Initialize provider hint
+        updateProviderHint();
+
+        // ------------------------------------
         // Gemeinsame Funktion: Vorhersage starten
         // ------------------------------------
         async function runForecast() {
@@ -459,17 +600,20 @@
           const thresholdPct = parseFloat(thresholdInput.value || "1.0");
           const segmentLen = parseInt(segmentLenInput.value || "120", 10);
           const horizonDays = parseInt(horizonInput.value || "1", 10);
+          const provider = providerSelect.value;
+          const interval = intervalSelect.value;
+          const lookbackDays = parseInt(lookbackInput.value || "7", 10);
 
           appendLog(
             "Sende Anfrage für " +
               symbol +
-              " (Threshold=" +
+              " (" + interval + ", " + provider + ", Threshold=" +
               thresholdPct.toFixed(2) +
               "%, Segment=" +
               segmentLen +
               ", Haltedauer=" +
               horizonDays +
-              " Tage)..."
+              " Perioden)..."
           );
 
           try {
@@ -484,6 +628,9 @@
                 threshold_pct: thresholdPct,
                 segment_len: segmentLen,
                 horizon_days: horizonDays,
+                provider,
+                interval,
+                lookback_days: lookbackDays,
               }),
             });
 
