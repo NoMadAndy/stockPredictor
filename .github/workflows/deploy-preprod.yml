@@ -1,0 +1,52 @@
+name: Deploy to Preprod
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  deploy-preprod:
+    runs-on: ubuntu-latest
+    environment:
+      name: preprod
+      url: http://${{ secrets.PREPROD_SERVER }}:8001
+    
+    steps:
+    - name: Deploy to Preprod Server
+      uses: appleboy/ssh-action@v1.0.0
+      with:
+        host: ${{ secrets.PREPROD_SERVER }}
+        username: ${{ secrets.PREPROD_SSH_USER }}
+        key: ${{ secrets.PREPROD_SSH_KEY }}
+        port: ${{ secrets.PREPROD_SSH_PORT || 22 }}
+        script: |
+          set -e
+          
+          echo "Starting deployment to preprod..."
+          cd /opt/stockpredictor
+          
+          # Pull latest changes
+          sudo git fetch origin
+          sudo git reset --hard origin/main
+          
+          # Run deployment script
+          sudo bash /opt/stockpredictor/deploy.sh
+          
+          echo "Deployment to preprod completed!"
+    
+    - name: Health Check
+      run: |
+        sleep 10
+        curl -f http://${{ secrets.PREPROD_SERVER }}:8001/health || \
+          (echo "Health check failed!" && exit 1)
+    
+    - name: Notify Success
+      if: success()
+      run: |
+        echo "✅ Deployment to preprod successful!"
+    
+    - name: Notify Failure
+      if: failure()
+      run: |
+        echo "❌ Deployment to preprod failed!"

@@ -208,15 +208,68 @@ Führt eine vollständige Analyse und Vorhersage durch.
 - **Datenbeschaffung**: yfinance für Aktiendaten, NewsAPI für Nachrichten
 - **Frontend**: HTML/JavaScript mit Chart.js für Visualisierungen
 
-## Auto-Deployment
+## Auto-Deployment & CI/CD
 
-Das Repository ist für automatisches Deployment konfiguriert:
+Das Repository verfügt über eine vollständige CI/CD-Pipeline für automatisierte Deployments:
 
-1. **GitHub Webhook**: Bei Push-Events wird automatisch neu deployed
-2. **Systemd Service**: Automatischer Start beim Serverstart
-3. **Port 8001**: Standardport für die Anwendung
+### Funktionen
 
-Details zur Deployment-Konfiguration siehe `deploy.sh` und `stockpredictor.service`.
+1. **Continuous Integration**
+   - Automatische Tests bei jedem Push
+   - Docker Image Build und Verifikation
+   - Code-Qualitätsprüfungen
+
+2. **Preprod Deployment** 
+   - Automatisch bei Push zu `main` Branch
+   - Webhook-basierte Deployment-Trigger
+   - Automatische Health Checks
+
+3. **Production Deployment**
+   - Release-basiert mit manuellem Approval
+   - Automatisches Backup und Rollback
+   - Erweiterte Health Checks und Validierung
+
+4. **Deployment-Infrastruktur**
+   - GitHub Actions Workflows
+   - Webhook Receiver Service
+   - Systemd Service Management
+   - Nginx Reverse Proxy
+
+### Quick Start
+
+**Preprod Server installieren:**
+```bash
+sudo wget https://raw.githubusercontent.com/NoMadAndy/stockPredictor/main/install-server.sh
+sudo ./install-server.sh preprod
+```
+
+**Production Server installieren:**
+```bash
+sudo ./install-server.sh production
+```
+
+**Deployment auslösen:**
+```bash
+# Preprod: Einfach zu main pushen
+git push origin main
+
+# Production: Release erstellen
+git tag -a v1.0.0 -m "Release 1.0.0"
+git push origin v1.0.0
+# Dann auf GitHub: Create Release
+```
+
+### Dokumentation
+
+📖 **Vollständige Anleitung**: Siehe [DEPLOYMENT.md](DEPLOYMENT.md) für:
+- Detaillierte Installationsanleitung
+- GitHub Actions Setup
+- Webhook-Konfiguration
+- Monitoring und Troubleshooting
+- Sicherheits-Best Practices
+- Rollback-Verfahren
+
+**Kurz-Dokumentation**: Siehe [INSTALLATION.md](INSTALLATION.md) für manuelle Setup-Optionen.
 
 ## Entwicklung
 

@@ -682,6 +682,16 @@ def index():
     )
 
 
+@app.route("/health")
+def health():
+    """Health check endpoint for deployment verification"""
+    return jsonify({
+        "status": "healthy",
+        "timestamp": datetime.utcnow().isoformat(),
+        "version": os.getenv("APP_VERSION", "unknown")
+    }), 200
+
+
 @app.route("/api/train_predict", methods=["POST"])
 def api_train_predict():
     p = request.get_json()
