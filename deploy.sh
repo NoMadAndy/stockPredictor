@@ -34,7 +34,7 @@ echo "$(date): Pulling latest changes from GitHub..." | tee -a "$LOG_FILE"
 git fetch origin 2>&1 | tee -a "$LOG_FILE"
 
 # For branches, pull updates; for tags, just checkout
-if [[ "$BRANCH" =~ ^v[0-9]+\.[0-9]+\.[0-9]+ ]] || git rev-parse --verify "refs/tags/$BRANCH" &>/dev/null; then
+if [[ "$BRANCH" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || git rev-parse --verify "refs/tags/$BRANCH" &>/dev/null; then
     # This is a tag, just checkout
     echo "$(date): Checking out tag $BRANCH..." | tee -a "$LOG_FILE"
     git checkout "$BRANCH" 2>&1 | tee -a "$LOG_FILE"
