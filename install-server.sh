@@ -8,6 +8,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_DIR="/opt/stockpredictor"
 DEFAULT_ENV="preprod"
+REPO_URL="https://github.com/NoMadAndy/stockPredictor.git"
 
 # Colors for output
 RED='\033[0;31m'
@@ -64,7 +65,7 @@ if [ -d "$APP_DIR" ]; then
     git pull origin main
 else
     echo "Cloning repository..."
-    git clone https://github.com/NoMadAndy/stockPredictor.git "$APP_DIR"
+    git clone "$REPO_URL" "$APP_DIR"
     cd "$APP_DIR"
 fi
 

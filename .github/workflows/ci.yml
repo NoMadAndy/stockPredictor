@@ -34,10 +34,17 @@ jobs:
     
     - name: Test application starts
       run: |
+        # Use trap to ensure cleanup
+        trap 'pkill -f "python app.py" || true' EXIT
         timeout 10 python app.py &
+        APP_PID=$!
         sleep 5
-        curl -f http://localhost:8001 || exit 1
-        pkill -f "python app.py"
+        if curl -f http://localhost:8001; then
+          echo "Application started successfully"
+        else
+          echo "Application failed to start"
+          exit 1
+        fi
       env:
         SECRET_KEY: test_secret_key_for_ci
         DEBUG: false

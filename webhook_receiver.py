@@ -234,16 +234,19 @@ if __name__ == '__main__':
     # Parse command line arguments
     import argparse
     parser = argparse.ArgumentParser(description='GitHub Webhook Receiver')
-    parser.add_argument('--port', type=int, default=PORT, help='Port to listen on')
-    parser.add_argument('--secret', default=SECRET, help='GitHub webhook secret')
-    parser.add_argument('--environment', default=DEPLOYMENT_ENV, 
+    parser.add_argument('--port', type=int, help='Port to listen on')
+    parser.add_argument('--secret', help='GitHub webhook secret')
+    parser.add_argument('--environment', 
                         choices=['preprod', 'production'],
                         help='Deployment environment (preprod or production)')
     args = parser.parse_args()
     
-    PORT = args.port
-    if args.secret:
+    # Update globals with command line arguments if provided
+    if args.port is not None:
+        PORT = args.port
+    if args.secret is not None:
         SECRET = args.secret
-    DEPLOYMENT_ENV = args.environment
+    if args.environment is not None:
+        DEPLOYMENT_ENV = args.environment
     
     run_server()
