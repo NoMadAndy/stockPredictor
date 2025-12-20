@@ -1,0 +1,87 @@
+name: Deploy to Production
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:  # Allow manual trigger with approval
+    inputs:
+      version:
+        description: 'Version/Tag to deploy'
+        required: true
+        default: 'main'
+
+jobs:
+  deploy-production:
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: http://${{ secrets.PROD_SERVER }}:8001
+    
+    steps:
+    - name: Deploy to Production Server
+      uses: appleboy/ssh-action@v1.0.0
+      with:
+        host: ${{ secrets.PROD_SERVER }}
+        username: ${{ secrets.PROD_SSH_USER }}
+        key: ${{ secrets.PROD_SSH_KEY }}
+        port: ${{ secrets.PROD_SSH_PORT || 22 }}
+        script: |
+          set -e
+          
+          echo "Starting deployment to production..."
+          cd /opt/stockpredictor
+          
+          # Backup current version
+          BACKUP_DIR="/opt/stockpredictor-backup-$(date +%Y%m%d-%H%M%S)"
+          sudo cp -r /opt/stockpredictor "$BACKUP_DIR"
+          echo "Backup created at: $BACKUP_DIR"
+          
+          # Pull and checkout specific version
+          sudo git fetch origin
+          VERSION="${{ github.event.inputs.version || github.event.release.tag_name }}"
+          sudo git checkout "$VERSION"
+          
+          # Run deployment script
+          sudo bash /opt/stockpredictor/deploy.sh
+          
+          echo "Deployment to production completed!"
+    
+    - name: Health Check
+      run: |
+        sleep 15
+        for i in {1..5}; do
+          if curl -f http://${{ secrets.PROD_SERVER }}:8001/health; then
+            echo "Health check passed!"
+            exit 0
+          fi
+          echo "Health check attempt $i failed, retrying..."
+          sleep 10
+        done
+        echo "Health check failed after 5 attempts!"
+        exit 1
+    
+    - name: Notify Success
+      if: success()
+      run: |
+        echo "✅ Deployment to production successful!"
+    
+    - name: Rollback on Failure
+      if: failure()
+      uses: appleboy/ssh-action@v1.0.0
+      with:
+        host: ${{ secrets.PROD_SERVER }}
+        username: ${{ secrets.PROD_SSH_USER }}
+        key: ${{ secrets.PROD_SSH_KEY }}
+        port: ${{ secrets.PROD_SSH_PORT || 22 }}
+        script: |
+          set -e
+          echo "⚠️ Rolling back production deployment..."
+          cd /opt/stockpredictor
+          sudo git checkout main
+          sudo bash /opt/stockpredictor/deploy.sh
+          echo "Rollback completed!"
+    
+    - name: Notify Failure
+      if: failure()
+      run: |
+        echo "❌ Deployment to production failed and rolled back!"

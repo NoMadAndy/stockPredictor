@@ -6,11 +6,12 @@ This script listens for GitHub webhook events and triggers the deployment
 script when a push event is received.
 
 Usage:
-    python webhook_receiver.py [--port PORT] [--secret SECRET]
+    python webhook_receiver.py [--port PORT] [--secret SECRET] [--environment ENV]
 
 Environment Variables:
     WEBHOOK_PORT: Port to listen on (default: 9001)
     WEBHOOK_SECRET: GitHub webhook secret for verification (optional but recommended)
+    DEPLOYMENT_ENV: Deployment environment (preprod or production, default: preprod)
 """
 
 import os
@@ -25,6 +26,7 @@ import logging
 # Configuration
 PORT = int(os.getenv("WEBHOOK_PORT", 9001))
 SECRET = os.getenv("WEBHOOK_SECRET", "")
+DEPLOYMENT_ENV = os.getenv("DEPLOYMENT_ENV", "preprod")
 DEPLOY_SCRIPT = "/opt/stockpredictor/deploy.sh"
 
 # Setup logging
@@ -79,19 +81,53 @@ class WebhookHandler(BaseHTTPRequestHandler):
         event_type = self.headers.get('X-GitHub-Event', '')
         if event_type == 'push':
             ref = payload.get('ref', '')
-            logger.info(f"Received push event for ref: {ref}")
+            repository = payload.get('repository', {}).get('full_name', 'unknown')
+            pusher = payload.get('pusher', {}).get('name', 'unknown')
+            commits = payload.get('commits', [])
+            commit_count = len(commits)
             
-            # Trigger deployment for main/master branch
-            if ref in ['refs/heads/main', 'refs/heads/master']:
-                self.trigger_deployment()
+            logger.info(f"Received push event for ref: {ref} from {pusher} ({commit_count} commits)")
+            logger.info(f"Repository: {repository}")
+            
+            # Trigger deployment based on environment and branch
+            if DEPLOYMENT_ENV == 'production':
+                # Production only deploys from releases/tags, not direct pushes
+                logger.info(f"Production environment ignores push events. Use releases/tags for production deployment.")
                 self.send_response(200)
                 self.end_headers()
-                self.wfile.write(b'Deployment triggered')
+                self.wfile.write(b'Production ignores push events. Use releases for production deployment.')
+            elif ref in ['refs/heads/main', 'refs/heads/master']:
+                # Preprod deploys from main/master branch
+                logger.info(f"Triggering {DEPLOYMENT_ENV} deployment for {ref}")
+                self.trigger_deployment(ref, payload)
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(f'{DEPLOYMENT_ENV} deployment triggered'.encode())
             else:
-                logger.info(f"Ignoring push to {ref}")
+                logger.info(f"Ignoring push to {ref} (not main/master)")
                 self.send_response(200)
                 self.end_headers()
                 self.wfile.write(b'Branch ignored')
+        elif event_type == 'release':
+            # Handle release events for production deployment
+            action = payload.get('action', '')
+            release = payload.get('release', {})
+            tag_name = release.get('tag_name', '')
+            release_name = release.get('name', '')
+            
+            logger.info(f"Received release event: {action} - {release_name} ({tag_name})")
+            
+            if action == 'published' and DEPLOYMENT_ENV == 'production':
+                logger.info(f"Triggering production deployment for release {tag_name}")
+                self.trigger_deployment(f'refs/tags/{tag_name}', payload)
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(b'Production deployment triggered')
+            else:
+                logger.info(f"Release event ignored (action={action}, env={DEPLOYMENT_ENV})")
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(b'Release event acknowledged')
         elif event_type == 'ping':
             logger.info("Received ping event")
             self.send_response(200)
@@ -126,26 +162,40 @@ class WebhookHandler(BaseHTTPRequestHandler):
         
         return hmac.compare_digest(expected_signature, signature)
 
-    def trigger_deployment(self):
-        """Execute the deployment script"""
+    def trigger_deployment(self, ref, payload):
+        """Execute the deployment script with context"""
         try:
-            logger.info("Triggering deployment script...")
+            commits = payload.get('commits', [])
+            commit_messages = '\n'.join([f"  - {c.get('message', 'No message')}" for c in commits[:5]])
+            
+            logger.info(f"Triggering deployment script for {DEPLOYMENT_ENV}...")
+            logger.info(f"Ref: {ref}")
+            logger.info(f"Recent commits:\n{commit_messages}")
+            
+            # Set environment variables for the deployment script
+            env = os.environ.copy()
+            env['DEPLOYMENT_ENV'] = DEPLOYMENT_ENV
+            env['GIT_REF'] = ref
+            
             result = subprocess.run(
                 [DEPLOY_SCRIPT],
                 capture_output=True,
                 text=True,
-                timeout=300  # 5 minutes timeout
+                timeout=300,  # 5 minutes timeout
+                env=env
             )
             
             if result.returncode == 0:
-                logger.info("Deployment completed successfully")
-                logger.debug(result.stdout)
+                logger.info(f"Deployment to {DEPLOYMENT_ENV} completed successfully")
+                if result.stdout:
+                    logger.info(f"Output:\n{result.stdout}")
             else:
-                logger.error(f"Deployment failed with code {result.returncode}")
-                logger.error(result.stderr)
+                logger.error(f"Deployment to {DEPLOYMENT_ENV} failed with code {result.returncode}")
+                if result.stderr:
+                    logger.error(f"Error output:\n{result.stderr}")
                 
         except subprocess.TimeoutExpired:
-            logger.error("Deployment script timed out")
+            logger.error(f"Deployment script timed out after 5 minutes")
         except Exception as e:
             logger.error(f"Error executing deployment script: {e}")
 
@@ -159,9 +209,19 @@ def run_server():
     server_address = ('', PORT)
     httpd = HTTPServer(server_address, WebhookHandler)
     
-    logger.info(f"Webhook receiver listening on port {PORT}")
+    logger.info("=" * 60)
+    logger.info("GitHub Webhook Receiver for Stock Predictor")
+    logger.info("=" * 60)
+    logger.info(f"Environment: {DEPLOYMENT_ENV}")
+    logger.info(f"Listening on port: {PORT}")
     logger.info(f"Secret configured: {bool(SECRET)}")
     logger.info(f"Deploy script: {DEPLOY_SCRIPT}")
+    logger.info("=" * 60)
+    
+    if DEPLOYMENT_ENV == 'production':
+        logger.warning("⚠️  PRODUCTION MODE: Only release events will trigger deployments")
+    else:
+        logger.info(f"ℹ️  {DEPLOYMENT_ENV.upper()} MODE: Push to main/master will trigger deployments")
     
     try:
         httpd.serve_forever()
@@ -174,12 +234,19 @@ if __name__ == '__main__':
     # Parse command line arguments
     import argparse
     parser = argparse.ArgumentParser(description='GitHub Webhook Receiver')
-    parser.add_argument('--port', type=int, default=PORT, help='Port to listen on')
-    parser.add_argument('--secret', default=SECRET, help='GitHub webhook secret')
+    parser.add_argument('--port', type=int, help='Port to listen on')
+    parser.add_argument('--secret', help='GitHub webhook secret')
+    parser.add_argument('--environment', 
+                        choices=['preprod', 'production'],
+                        help='Deployment environment (preprod or production)')
     args = parser.parse_args()
     
-    PORT = args.port
-    if args.secret:
+    # Update globals with command line arguments if provided
+    if args.port is not None:
+        PORT = args.port
+    if args.secret is not None:
         SECRET = args.secret
+    if args.environment is not None:
+        DEPLOYMENT_ENV = args.environment
     
     run_server()
