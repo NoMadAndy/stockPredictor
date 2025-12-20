@@ -60,6 +60,13 @@ elif systemctl is-active --quiet stockpredictor; then
     fi
     pip install -r requirements.txt 2>&1 | tee -a "$LOG_FILE"
     
+    # Set APP_VERSION in systemd service if not already set
+    if ! grep -q "APP_VERSION" /etc/systemd/system/stockpredictor.service; then
+        echo "$(date): Setting APP_VERSION in service..." | tee -a "$LOG_FILE"
+        sed -i "/Environment=\"DEBUG=false\"/a Environment=\"APP_VERSION=${BRANCH}\"" /etc/systemd/system/stockpredictor.service
+        systemctl daemon-reload
+    fi
+    
     echo "$(date): Restarting systemd service..." | tee -a "$LOG_FILE"
     systemctl restart stockpredictor
     echo "$(date): Systemd deployment completed successfully!" | tee -a "$LOG_FILE"
